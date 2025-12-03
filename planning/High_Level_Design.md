@@ -10,7 +10,7 @@ A web app where users pick start/end points on a map, select their boat type, an
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   React     │────▶│ API Gateway │────▶│   Lambda    │
-│  Frontend   │     │             │     │  (Node.js)  │
+│  Frontend   │     │             │     │  (Python)   │
 │  (S3/CDN)   │◀────│             │◀────│             │
 └─────────────┘     └─────────────┘     └──────┬──────┘
                                                │
@@ -40,9 +40,9 @@ A web app where users pick start/end points on a map, select their boat type, an
 
 | Choice | Why |
 |--------|-----|
-| **Lambda (Node.js)** | Free tier = 1M requests/month. Zero server management. Shows you understand serverless. |
+| **Lambda (Python)** | Free tier = 1M requests/month. Zero server management. Python is standard and we know it. |
 | **API Gateway** | Standard way to expose Lambda. Free tier = 1M requests/month. |
-| **No Express/EC2** | Why pay for a server that sits idle 99% of the time? Lambda is the right tool for sporadic demo traffic. |
+| **No Flask/EC2** | Why pay for a server that sits idle 99% of the time? Lambda is the right tool for sporadic demo traffic. |
 
 ### Weather API: Open-Meteo
 
@@ -187,7 +187,19 @@ Response:
 
 ```
 smart-sailing-planner/
-├── frontend/
+├── planning/
+│   ├── Project_Plan.md           # Detailed project plan
+│   └── High_Level_Design.md      # This file
+│
+├── backend/
+│   ├── requirements.txt          # Python dependencies
+│   ├── models.py                 # Data classes (Route, Waypoint, etc.)
+│   ├── route_generator.py        # Generate 3 route options
+│   ├── weather_fetcher.py        # Open-Meteo API calls
+│   ├── route_scorer.py           # Score routes based on weather
+│   └── main.py                   # Entry point / Lambda handler
+│
+├── frontend/                     # To be built
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Map.tsx           # Leaflet map with route display
@@ -196,19 +208,7 @@ smart-sailing-planner/
 │   │   │   └── WeatherPanel.tsx  # Weather details for selected route
 │   │   ├── services/
 │   │   │   └── api.ts            # API client
-│   │   ├── types/
-│   │   │   └── index.ts          # TypeScript interfaces
 │   │   └── App.tsx
-│   └── package.json
-│
-├── backend/
-│   ├── functions/
-│   │   └── calculateRoutes/
-│   │       ├── index.ts          # Lambda handler
-│   │       ├── routeGenerator.ts # Generate 3 route options
-│   │       ├── weatherFetcher.ts # Open-Meteo API calls
-│   │       └── routeScorer.ts    # Score routes based on weather
-│   ├── template.yaml             # AWS SAM deployment
 │   └── package.json
 │
 └── README.md
