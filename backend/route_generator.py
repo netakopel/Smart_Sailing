@@ -165,11 +165,11 @@ def generate_curved_waypoints(
     num_waypoints: int,
     departure_time: datetime,
     avg_speed: float,
-    offset_direction: str,  # 'north' or 'south'
+    offset_direction: str,  # 'left' or 'right'
     offset_amount: float    # nautical miles
 ) -> List[Waypoint]:
     """
-    Generate waypoints along a curved path (offset to north or south).
+    Generate waypoints along a curved path (offset left or right of direct route).
     
     This creates an arc that bulges away from the direct line,
     useful for avoiding weather or finding better wind angles.
@@ -180,7 +180,7 @@ def generate_curved_waypoints(
         num_waypoints: Number of intermediate points
         departure_time: When the journey starts
         avg_speed: Average boat speed in knots
-        offset_direction: 'north' or 'south'
+        offset_direction: 'left' (port) or 'right' (starboard)
         offset_amount: Maximum offset distance in nautical miles
         
     Returns:
@@ -191,7 +191,9 @@ def generate_curved_waypoints(
     main_bearing = calculate_bearing(start, end)
     
     # Calculate perpendicular bearing for offset
-    if offset_direction == 'north':
+    # Left (port) = -90 degrees from travel direction
+    # Right (starboard) = +90 degrees from travel direction
+    if offset_direction == 'left':
         perp_bearing = (main_bearing - 90 + 360) % 360
     else:
         perp_bearing = (main_bearing + 90) % 360
@@ -314,36 +316,36 @@ def generate_routes(request: RouteRequest) -> List[GeneratedRoute]:
         estimated_time=format_duration(direct_hours)
     ))
     
-    # 2. Northern Route
-    northern_waypoints = generate_curved_waypoints(
-        start, end, num_waypoints, departure, boat.avg_speed, 'north', offset_amount
+    # 2. Port Route (curves left of direct route)
+    port_waypoints = generate_curved_waypoints(
+        start, end, num_waypoints, departure, boat.avg_speed, 'left', offset_amount
     )
-    northern_distance = calculate_route_distance(northern_waypoints)
-    northern_hours = northern_distance / boat.avg_speed
+    port_distance = calculate_route_distance(port_waypoints)
+    port_hours = port_distance / boat.avg_speed
     
     routes.append(GeneratedRoute(
-        name="Northern Route",
-        route_type=RouteType.NORTHERN,
-        waypoints=northern_waypoints,
-        distance=round(northern_distance, 1),
-        estimated_hours=northern_hours,
-        estimated_time=format_duration(northern_hours)
+        name="Port Route",
+        route_type=RouteType.PORT,
+        waypoints=port_waypoints,
+        distance=round(port_distance, 1),
+        estimated_hours=port_hours,
+        estimated_time=format_duration(port_hours)
     ))
     
-    # 3. Southern Route
-    southern_waypoints = generate_curved_waypoints(
-        start, end, num_waypoints, departure, boat.avg_speed, 'south', offset_amount
+    # 3. Starboard Route (curves right of direct route)
+    starboard_waypoints = generate_curved_waypoints(
+        start, end, num_waypoints, departure, boat.avg_speed, 'right', offset_amount
     )
-    southern_distance = calculate_route_distance(southern_waypoints)
-    southern_hours = southern_distance / boat.avg_speed
+    starboard_distance = calculate_route_distance(starboard_waypoints)
+    starboard_hours = starboard_distance / boat.avg_speed
     
     routes.append(GeneratedRoute(
-        name="Southern Route",
-        route_type=RouteType.SOUTHERN,
-        waypoints=southern_waypoints,
-        distance=round(southern_distance, 1),
-        estimated_hours=southern_hours,
-        estimated_time=format_duration(southern_hours)
+        name="Starboard Route",
+        route_type=RouteType.STARBOARD,
+        waypoints=starboard_waypoints,
+        distance=round(starboard_distance, 1),
+        estimated_hours=starboard_hours,
+        estimated_time=format_duration(starboard_hours)
     ))
     
     return routes

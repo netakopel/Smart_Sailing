@@ -18,8 +18,8 @@ class BoatType(Enum):
 class RouteType(Enum):
     """Types of routes we generate"""
     DIRECT = "direct"
-    NORTHERN = "northern"
-    SOUTHERN = "southern"
+    PORT = "port"          # Left side of direct route
+    STARBOARD = "starboard"  # Right side of direct route
 
 
 @dataclass
