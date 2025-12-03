@@ -90,8 +90,9 @@ Different scoring for different boats:
 
 ## Implementation Phases
 
-### Phase 1: Backend Algorithm (Days 1-3) ✅ DONE
+### Phase 1: Backend Algorithm - Naive Version (Days 1-3) ✅ DONE
 Build the core logic locally in Python before any cloud setup.
+Uses a simple "generate-then-evaluate" approach: creates 3 geometric route alternatives (direct, port curve, starboard curve) without considering wind data, then scores them after fetching weather.
 
 - [x] Set up Python project structure
 - [x] Create data models (`models.py`)
@@ -102,6 +103,7 @@ Build the core logic locally in Python before any cloud setup.
 - [x] Test locally with sample coordinates
 
 **Result**: Working Python code that calculates routes with real weather data.
+**Note**: This is a naive algorithm - routes are generated geometrically without wind optimization. See Phase 7 for planned improvements.
 
 ### Phase 2: AWS Lambda Deployment (Days 4-5)
 Wrap the Python code in a Lambda function and deploy.
@@ -159,6 +161,18 @@ Prepare for interviews.
 - [ ] Practice explaining the code
 - [ ] Prepare answers for likely interview questions
 - [ ] Optional: Record demo video
+
+### Phase 7: Smart Route Algorithm (Future Enhancement)
+After the full system is working end-to-end, improve the route generation algorithm to be wind-aware.
+
+- [ ] Add boat polar diagrams (speed at each wind angle) to `BOAT_PROFILES`
+- [ ] Fetch regional wind forecast BEFORE generating routes
+- [ ] Calculate optimal VMG (Velocity Made Good) angles for each boat type
+- [ ] Generate routes that maximize time spent at favorable wind angles
+- [ ] Consider implementing isochrone algorithm for true optimal routing
+- [ ] Update `route_generator.py` while keeping the same interface (minimal changes to rest of system)
+
+**Goal**: Replace naive geometric routes with wind-optimized routes that consider boat polars and weather forecasts upfront.
 
 ---
 
@@ -295,12 +309,13 @@ Response:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 1: Backend Algorithm | ✅ Done | Python code working locally |
+| Phase 1: Backend Algorithm (Naive) | ✅ Done | Python code working locally |
 | Phase 2: Lambda Deployment | ⬜ Not started | Next step |
 | Phase 3: Frontend Development | ⬜ Not started | |
 | Phase 4: Frontend Deployment | ⬜ Not started | |
 | Phase 5: Polish & Testing | ⬜ Not started | |
 | Phase 6: Documentation | ⬜ Not started | |
+| Phase 7: Smart Route Algorithm | ⬜ Future | Wind-aware route generation |
 
 ---
 
