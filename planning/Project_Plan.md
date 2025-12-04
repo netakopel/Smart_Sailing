@@ -108,14 +108,37 @@ Uses a simple "generate-then-evaluate" approach: creates 3 geometric route alter
 ### Phase 2: AWS Lambda Deployment (Days 4-5)
 Wrap the Python code in a Lambda function and deploy.
 
-- [ ] Create AWS account (if needed)
-- [ ] Set up IAM roles for Lambda
-- [ ] Create Lambda function with Python runtime
-- [ ] Package dependencies (requests library)
-- [ ] Create API Gateway endpoint
-- [ ] Connect API Gateway to Lambda
-- [ ] Test API endpoint with Postman/curl
-- [ ] Handle CORS for frontend access
+#### Step 2.1: Create AWS Account ✅
+- [x] Go to aws.amazon.com and create a free account
+- [x] Set up billing alerts (Zero spend budget created)
+- [ ] Enable MFA (Multi-Factor Authentication) for security (optional, skip for now)
+
+#### Step 2.2: Understand AWS Console ✅
+- [x] Log into AWS Console
+- [x] Learn to navigate to Lambda and API Gateway services
+- [x] Understand the region selector (Israel/Tel Aviv selected)
+
+#### Step 2.3: Create Lambda Function ✅
+- [x] Navigate to Lambda service
+- [x] Create new function `sailing-route-planner` with Python 3.11 runtime
+- [x] Understand the Lambda code editor (tested with Hello World)
+
+#### Step 2.4: Adapt Code for Lambda ✅
+- [x] Create `lambda_handler` function (AWS Lambda's entry point)
+- [x] Handle JSON input/output format
+- [x] Package dependencies (requests library) into a deployment ZIP
+- [x] Upload ZIP to Lambda and test successfully
+
+#### Step 2.5: Create API Gateway
+- [ ] Create HTTP API in API Gateway
+- [ ] Create POST route `/calculate-routes`
+- [ ] Connect route to Lambda function
+- [ ] Enable CORS for frontend access
+
+#### Step 2.6: Test & Verify
+- [ ] Test Lambda function directly in AWS Console
+- [ ] Test API endpoint with curl or Postman
+- [ ] Verify full end-to-end flow
 
 ### Phase 3: Frontend Development (Days 6-9)
 Build the React frontend with map and route display.
@@ -310,7 +333,7 @@ Response:
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1: Backend Algorithm (Naive) | ✅ Done | Python code working locally |
-| Phase 2: Lambda Deployment | ⬜ Not started | Next step |
+| Phase 2: Lambda Deployment | 🔄 In Progress | Starting Step 2.1 |
 | Phase 3: Frontend Development | ⬜ Not started | |
 | Phase 4: Frontend Deployment | ⬜ Not started | |
 | Phase 5: Polish & Testing | ⬜ Not started | |
@@ -320,4 +343,4 @@ Response:
 ---
 
 **Timeline:** 2 weeks (14 days)
-**Current Status:** Phase 1 complete, ready for Phase 2
+**Current Status:** Phase 2 - AWS Lambda Deployment in progress
