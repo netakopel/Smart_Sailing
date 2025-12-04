@@ -198,10 +198,17 @@ def score_route(
     total_visibility_score = 0.0
     segments_scored = 0
     
+    # Track if any weather data is estimated (API failed)
+    estimated_weather_count = 0
+    
     # Score each waypoint/segment
     for i, waypoint in enumerate(route.waypoints):
         if waypoint.weather is None:
             continue
+        
+        # Check if this is estimated (default) weather data
+        if waypoint.weather.is_estimated:
+            estimated_weather_count += 1
         
         # Use bearing of the segment starting at this waypoint
         heading = bearings[min(i, len(bearings) - 1)] if bearings else 0
@@ -270,6 +277,12 @@ def score_route(
         all_cons.append("Rain expected on route")
     if route.distance > direct_distance * 1.1:
         all_cons.append("Longer route")
+    
+    # Add warning if some weather data was estimated (API failed)
+    if estimated_weather_count > 0:
+        all_warnings.append(
+            f"Weather data unavailable for {estimated_weather_count} waypoint(s) - using estimates"
+        )
     
     # Ensure we always have at least one pro/con
     if not all_pros:

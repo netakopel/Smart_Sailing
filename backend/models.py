@@ -32,12 +32,15 @@ class Coordinates:
 @dataclass
 class WaypointWeather:
     """Weather conditions at a specific point and time"""
-    wind_speed: float       # knots
+    wind_speed: float       # knots (effective wind: blend of sustained + gusts)
     wind_direction: float   # degrees (0-360, where wind comes FROM)
     wave_height: float      # meters
     precipitation: float    # mm
     visibility: float       # km
     temperature: float      # celsius
+    wind_gusts: float = 0.0       # knots (peak gusts)
+    wind_sustained: float = 0.0   # knots (sustained wind without gusts)
+    is_estimated: bool = False    # True if API failed and defaults were used
 
 
 @dataclass

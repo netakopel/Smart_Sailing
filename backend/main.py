@@ -110,14 +110,14 @@ def display_results(response: RouteResponse) -> None:
         if route.waypoints[0].weather:
             w = route.waypoints[0].weather
             print("   Start conditions:")
-            print(f"      Wind: {w.wind_speed}kt from {w.wind_direction} deg")
-            print(f"      Waves: {w.wave_height}m | Temp: {w.temperature}C")
+            print(f"      Wind: {w.wind_speed}kt (sustained {w.wind_sustained}kt, gusts {w.wind_gusts}kt)")
+            print(f"      Direction: {w.wind_direction} deg | Waves: {w.wave_height}m | Temp: {w.temperature}C")
         
         if route.waypoints[midpoint].weather:
             w = route.waypoints[midpoint].weather
             print("   Mid-route conditions:")
-            print(f"      Wind: {w.wind_speed}kt from {w.wind_direction} deg")
-            print(f"      Waves: {w.wave_height}m | Temp: {w.temperature}C")
+            print(f"      Wind: {w.wind_speed}kt (sustained {w.wind_sustained}kt, gusts {w.wind_gusts}kt)")
+            print(f"      Direction: {w.wind_direction} deg | Waves: {w.wave_height}m | Temp: {w.temperature}C")
 
     print("\n" + "=" * 65)
     print(f"Calculated at: {response.calculated_at}")
@@ -139,6 +139,8 @@ def route_to_dict(route: Route) -> dict:
                 "estimatedArrival": wp.estimated_arrival,
                 "weather": {
                     "windSpeed": wp.weather.wind_speed,
+                    "windSustained": wp.weather.wind_sustained,
+                    "windGusts": wp.weather.wind_gusts,
                     "windDirection": wp.weather.wind_direction,
                     "waveHeight": wp.weather.wave_height,
                     "precipitation": wp.weather.precipitation,
@@ -158,15 +160,15 @@ def main():
     """
     Demo: Run with sample data.
     
-    Example route: Southampton, UK to Cherbourg, France
-    This is a classic English Channel crossing (~76 nautical miles)
+    Example route: Haifa, Israel to Limassol, Cyprus
+    Mediterranean crossing (~180 nautical miles)
     """
     
     # Create a route request
-    # Southampton, UK to Cherbourg, France
+    # Haifa, Israel to Limassol, Cyprus
     request = RouteRequest(
-        start=Coordinates(lat=50.8965, lng=-1.3972),   # Southampton
-        end=Coordinates(lat=49.6337, lng=-1.6222),     # Cherbourg
+        start=Coordinates(lat=32.79, lng=34.99),   # Haifa, Israel
+        end=Coordinates(lat=34.68, lng=33.04),     # Limassol, Cyprus
         boat_type=BoatType.SAILBOAT,
         departure_time=(datetime.now() + timedelta(days=1)).isoformat()  # Tomorrow
     )
