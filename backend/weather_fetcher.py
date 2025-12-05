@@ -152,19 +152,7 @@ def fetch_weather_for_waypoints(waypoints: List[Waypoint]) -> List[Waypoint]:
         if weather_response.ok:
             weather_data = weather_response.json()
         else:
-            print(f"  Warning: Weather API ({model_name}) returned status {weather_response.status_code}")
-            # Fallback to default API if model-specific fails
-            if weather_api_url != WEATHER_APIS['default']:
-                print(f"  Trying fallback to default model...")
-                weather_response = requests.get(WEATHER_APIS['default'], params={
-                    'latitude': lat_str,
-                    'longitude': lng_str,
-                    'hourly': 'temperature_2m,precipitation,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
-                    'start_date': start_date,
-                    'end_date': end_date
-                }, timeout=15)
-                if weather_response.ok:
-                    weather_data = weather_response.json()
+            print(f"  Warning: Weather API returned status {weather_response.status_code}")
     except Exception as e:
         print(f"  Warning: Weather API call failed: {e}")
     

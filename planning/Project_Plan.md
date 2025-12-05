@@ -129,16 +129,18 @@ Wrap the Python code in a Lambda function and deploy.
 - [x] Package dependencies (requests library) into a deployment ZIP
 - [x] Upload ZIP to Lambda and test successfully
 
-#### Step 2.5: Create API Gateway
-- [ ] Create HTTP API in API Gateway
-- [ ] Create POST route `/calculate-routes`
-- [ ] Connect route to Lambda function
-- [ ] Enable CORS for frontend access
+#### Step 2.5: Create API Gateway ✅
+- [x] Create HTTP API in API Gateway (`sailing-api`)
+- [x] Create POST route `/calculate-routes`
+- [x] Connect route to Lambda function
+- [x] CORS headers added in Lambda code
 
-#### Step 2.6: Test & Verify
-- [ ] Test Lambda function directly in AWS Console
-- [ ] Test API endpoint with curl or Postman
-- [ ] Verify full end-to-end flow
+#### Step 2.6: Test & Verify ✅
+- [x] Test Lambda function directly in AWS Console
+- [x] Test API endpoint with PowerShell - SUCCESS!
+- [x] Verify full end-to-end flow
+
+**API Endpoint:** `https://u2qvnjdj5m.execute-api.il-central-1.amazonaws.com/calculate-routes`
 
 ### Phase 3: Frontend Development (Days 6-9)
 Build the React frontend with map and route display.
@@ -333,8 +335,8 @@ Response:
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1: Backend Algorithm (Naive) | ✅ Done | Python code working locally |
-| Phase 2: Lambda Deployment | 🔄 In Progress | Starting Step 2.1 |
-| Phase 3: Frontend Development | ⬜ Not started | |
+| Phase 2: Lambda Deployment | ✅ Done | API live at AWS! |
+| Phase 3: Frontend Development | ⬜ Not started | Next step |
 | Phase 4: Frontend Deployment | ⬜ Not started | |
 | Phase 5: Polish & Testing | ⬜ Not started | |
 | Phase 6: Documentation | ⬜ Not started | |
@@ -343,4 +345,4 @@ Response:
 ---
 
 **Timeline:** 2 weeks (14 days)
-**Current Status:** Phase 2 - AWS Lambda Deployment in progress
+**Current Status:** Phase 2 COMPLETE! Ready for Phase 3 (Frontend)
