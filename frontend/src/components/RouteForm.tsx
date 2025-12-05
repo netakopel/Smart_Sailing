@@ -1,0 +1,158 @@
+import type { Coordinates, BoatType } from '../types';
+
+interface RouteFormProps {
+  startPoint: Coordinates | null;
+  endPoint: Coordinates | null;
+  boatType: BoatType;
+  loading: boolean;
+  onBoatTypeChange: (type: BoatType) => void;
+  onCalculate: () => void;
+  onClear: () => void;
+}
+
+const BOAT_OPTIONS: { value: BoatType; label: string; icon: string; description: string }[] = [
+  { 
+    value: 'sailboat', 
+    label: 'Sailboat', 
+    icon: '⛵', 
+    description: 'Wind-powered, 5-8 knots avg' 
+  },
+  { 
+    value: 'motorboat', 
+    label: 'Motorboat', 
+    icon: '🚤', 
+    description: 'Engine-powered, 15-25 knots' 
+  },
+  { 
+    value: 'catamaran', 
+    label: 'Catamaran', 
+    icon: '🛥️', 
+    description: 'Twin-hull, 8-12 knots avg' 
+  },
+];
+
+export default function RouteForm({
+  startPoint,
+  endPoint,
+  boatType,
+  loading,
+  onBoatTypeChange,
+  onCalculate,
+  onClear,
+}: RouteFormProps) {
+  const canCalculate = startPoint && endPoint && !loading;
+
+  return (
+    <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-xl border border-slate-700">
+      {/* Header */}
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span className="text-2xl">🧭</span>
+        Route Planner
+      </h2>
+
+      {/* Instructions */}
+      <div className="mb-4 p-3 bg-slate-900/50 rounded-lg text-sm">
+        {!startPoint ? (
+          <p className="text-emerald-400">
+            <span className="font-semibold">Step 1:</span> Click on the map to set your start point
+          </p>
+        ) : !endPoint ? (
+          <p className="text-amber-400">
+            <span className="font-semibold">Step 2:</span> Click on the map to set your destination
+          </p>
+        ) : (
+          <p className="text-sky-400">
+            <span className="font-semibold">Step 3:</span> Select boat type and calculate routes!
+          </p>
+        )}
+      </div>
+
+      {/* Coordinates display */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="bg-slate-900/50 rounded-lg p-3">
+          <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Start</p>
+          {startPoint ? (
+            <p className="text-emerald-400 font-mono text-sm">
+              {startPoint.lat.toFixed(3)}, {startPoint.lng.toFixed(3)}
+            </p>
+          ) : (
+            <p className="text-slate-500 text-sm">Not set</p>
+          )}
+        </div>
+        <div className="bg-slate-900/50 rounded-lg p-3">
+          <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">End</p>
+          {endPoint ? (
+            <p className="text-amber-400 font-mono text-sm">
+              {endPoint.lat.toFixed(3)}, {endPoint.lng.toFixed(3)}
+            </p>
+          ) : (
+            <p className="text-slate-500 text-sm">Not set</p>
+          )}
+        </div>
+      </div>
+
+      {/* Boat type selector */}
+      <div className="mb-4">
+        <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Boat Type</p>
+        <div className="space-y-2">
+          {BOAT_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => onBoatTypeChange(option.value)}
+              className={`w-full p-3 rounded-lg text-left transition-all duration-200 flex items-center gap-3
+                ${boatType === option.value
+                  ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                  : 'bg-slate-900/50 text-slate-300 hover:bg-slate-700'
+                }`}
+            >
+              <span className="text-2xl">{option.icon}</span>
+              <div>
+                <p className="font-semibold">{option.label}</p>
+                <p className={`text-xs ${boatType === option.value ? 'text-sky-200' : 'text-slate-500'}`}>
+                  {option.description}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={onCalculate}
+          disabled={!canCalculate}
+          className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2
+            ${canCalculate
+              ? 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:from-sky-400 hover:to-emerald-400 shadow-lg'
+              : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+            }`}
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Calculating...
+            </>
+          ) : (
+            <>
+              <span>🚀</span>
+              Calculate Routes
+            </>
+          )}
+        </button>
+        
+        <button
+          onClick={onClear}
+          className="py-3 px-4 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors"
+          title="Clear all points"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
