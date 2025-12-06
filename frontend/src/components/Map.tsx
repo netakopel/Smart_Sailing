@@ -1,5 +1,5 @@
 import { MapContainer, TileLayer, Marker, Polyline, useMapEvents, Popup } from 'react-leaflet';
-import { Icon, LatLngExpression } from 'leaflet';
+import { Icon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Coordinates, Route } from '../types';
 
