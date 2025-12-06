@@ -50,3 +50,6 @@ coverage/
 # Misc
 *.pdf
 
+# Study notes (personal)
+study/
+
