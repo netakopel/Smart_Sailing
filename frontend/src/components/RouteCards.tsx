@@ -55,7 +55,7 @@ function RouteCard({
   return (
     <div
       onClick={onSelect}
-      className={`relative p-4 rounded-xl cursor-pointer transition-all duration-300 border-2
+      className={`relative p-5 rounded-xl cursor-pointer transition-all duration-300 border-2 h-80 flex flex-col
         ${isSelected 
           ? `${info.bgColor} ${info.borderColor} shadow-lg scale-[1.02]` 
           : 'bg-slate-800/60 border-slate-700 hover:border-slate-500'
@@ -89,39 +89,42 @@ function RouteCard({
         </div>
       </div>
 
-      {/* Warnings */}
-      {route.warnings.length > 0 && (
-        <div className="mb-3">
-          {route.warnings.map((warning, i) => (
-            <div key={i} className="flex items-start gap-2 text-amber-400 text-xs bg-amber-500/10 rounded p-2 mb-1">
-              <span>⚠️</span>
-              <span>{warning}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Scrollable content area for warnings and pros/cons */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {/* Warnings */}
+        {route.warnings.length > 0 && (
+          <div className="mb-3 space-y-1">
+            {route.warnings.map((warning, i) => (
+              <div key={i} className="flex items-start gap-2 text-amber-400 text-xs bg-amber-500/10 rounded p-2">
+                <span className="shrink-0">⚠️</span>
+                <span>{warning}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
-      {/* Pros & Cons (shown when selected) */}
-      {isSelected && (
-        <div className="mt-3 pt-3 border-t border-slate-700 space-y-2">
-          {route.pros.length > 0 && (
-            <div>
-              <p className="text-emerald-400 text-xs font-semibold mb-1">✓ Advantages</p>
-              {route.pros.map((pro, i) => (
-                <p key={i} className="text-slate-300 text-xs ml-3">• {pro}</p>
-              ))}
-            </div>
-          )}
-          {route.cons.length > 0 && (
-            <div>
-              <p className="text-rose-400 text-xs font-semibold mb-1">✗ Concerns</p>
-              {route.cons.map((con, i) => (
-                <p key={i} className="text-slate-300 text-xs ml-3">• {con}</p>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+        {/* Pros & Cons (shown when selected) */}
+        {isSelected && (
+          <div className="pt-3 border-t border-slate-700 space-y-2">
+            {route.pros.length > 0 && (
+              <div>
+                <p className="text-emerald-400 text-xs font-semibold mb-1">✓ Advantages</p>
+                {route.pros.map((pro, i) => (
+                  <p key={i} className="text-slate-300 text-xs ml-3">• {pro}</p>
+                ))}
+              </div>
+            )}
+            {route.cons.length > 0 && (
+              <div>
+                <p className="text-rose-400 text-xs font-semibold mb-1">✗ Concerns</p>
+                {route.cons.map((con, i) => (
+                  <p key={i} className="text-slate-300 text-xs ml-3">• {con}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -150,19 +153,22 @@ export default function RouteCards({ routes, selectedIndex, onSelectRoute }: Rou
         <span className="text-slate-500 text-sm font-normal">({routes.length} routes)</span>
       </h3>
       
-      {sortedRoutes.map((route, index) => (
-        <RouteCard
-          key={route.type}
-          route={route}
-          index={index}
-          isSelected={selectedIndex !== null && routes[selectedIndex]?.type === route.type}
-          onSelect={() => {
-            // Find the original index in the routes array
-            const originalIndex = routes.findIndex(r => r.type === route.type);
-            onSelectRoute(originalIndex);
-          }}
-        />
-      ))}
+      <div className="flex flex-row gap-3">
+        {sortedRoutes.map((route, index) => (
+          <div key={route.type} className="flex-1 min-w-0">
+            <RouteCard
+              route={route}
+              index={index}
+              isSelected={selectedIndex !== null && routes[selectedIndex]?.type === route.type}
+              onSelect={() => {
+                // Find the original index in the routes array
+                const originalIndex = routes.findIndex(r => r.type === route.type);
+                onSelectRoute(originalIndex);
+              }}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

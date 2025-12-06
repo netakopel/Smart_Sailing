@@ -85,7 +85,7 @@ function App() {
       {/* Main content */}
       <main className="max-w-7xl mx-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left sidebar - Form and Route Cards */}
+          {/* Left sidebar - Form and Weather */}
           <div className="lg:col-span-1 space-y-6">
             <RouteForm
               startPoint={startPoint}
@@ -107,27 +107,31 @@ function App() {
               </div>
             )}
 
-            <RouteCards
-              routes={routes}
-              selectedIndex={selectedRouteIndex}
-              onSelectRoute={setSelectedRouteIndex}
-            />
-
             {/* Weather panel - show when route selected */}
             {selectedRoute && (
               <WeatherPanel route={selectedRoute} />
             )}
           </div>
 
-          {/* Map - takes 2/3 of the width on large screens */}
-          <div className="lg:col-span-2 h-[600px] lg:h-[calc(100vh-180px)]">
-            <Map
-              startPoint={startPoint}
-              endPoint={endPoint}
+          {/* Right side - Map on top, Route Cards below */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Map */}
+            <div className="h-[400px] lg:h-[450px]">
+              <Map
+                startPoint={startPoint}
+                endPoint={endPoint}
+                routes={routes}
+                selectedRouteIndex={selectedRouteIndex}
+                onStartPointChange={setStartPoint}
+                onEndPointChange={setEndPoint}
+              />
+            </div>
+
+            {/* Route Cards - below the map */}
+            <RouteCards
               routes={routes}
-              selectedRouteIndex={selectedRouteIndex}
-              onStartPointChange={setStartPoint}
-              onEndPointChange={setEndPoint}
+              selectedIndex={selectedRouteIndex}
+              onSelectRoute={setSelectedRouteIndex}
             />
           </div>
         </div>
