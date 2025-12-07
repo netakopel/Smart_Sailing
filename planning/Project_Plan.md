@@ -160,15 +160,19 @@ Build the React frontend with map and route display.
 **Result**: Beautiful, fully functional React frontend connected to Lambda backend.
 **Dev Server**: `npm run dev` → http://localhost:5173
 
-### Phase 4: Frontend Deployment (Day 10)
+### Phase 4: Frontend Deployment (Day 10) ✅ DONE
 Deploy frontend to AWS.
 
-- [ ] Build React app for production
-- [ ] Create S3 bucket for static hosting
-- [ ] Upload build files to S3
-- [ ] Set up CloudFront CDN
-- [ ] Configure HTTPS
-- [ ] Test full end-to-end flow
+- [x] Build React app for production (`npm run build` → `dist/` folder)
+- [x] Create S3 bucket for static hosting (`smart-sailing-planner-frontend`)
+- [x] Upload build files to S3
+- [x] Set up CloudFront CDN
+- [x] Configure HTTPS (automatic with CloudFront)
+- [x] Test full end-to-end flow
+
+**Production URL:** `https://d2zb6habqv1546.cloudfront.net`
+**S3 Bucket:** `smart-sailing-planner-frontend`
+**CloudFront Distribution:** `d2zb6habqv1546.cloudfront.net`
 
 ### Phase 5: Polish & Testing (Days 11-12)
 Make it interview-ready.
@@ -314,7 +318,7 @@ Response:
 - [x] Each route shows real weather conditions
 - [x] Routes are scored and ranked
 - [x] Beautiful, professional UI
-- [ ] Fully deployed and accessible via URL (Phase 4)
+- [x] Fully deployed and accessible via URL (Phase 4)
 - [ ] Can explain every part of the code
 - [ ] Ready for interview demos
 
@@ -346,12 +350,12 @@ Response:
 | Phase 1: Backend Algorithm (Naive) | ✅ Done | Python code working locally |
 | Phase 2: Lambda Deployment | ✅ Done | API live at AWS! |
 | Phase 3: Frontend Development | ✅ Done | React app with beautiful UI |
-| Phase 4: Frontend Deployment | ⬜ Not started | Next step |
-| Phase 5: Polish & Testing | ⬜ Not started | |
+| Phase 4: Frontend Deployment | ✅ Done | Live at CloudFront! |
+| Phase 5: Polish & Testing | ⬜ Not started | Next step |
 | Phase 6: Documentation | ⬜ Not started | |
 | Phase 7: Smart Route Algorithm | ⬜ Future | Wind-aware route generation |
 
 ---
 
 **Timeline:** 2 weeks (14 days)
-**Current Status:** Phase 3 COMPLETE! Ready for Phase 4 (Deploy to S3/CloudFront)
+**Current Status:** Phase 4 COMPLETE! App is live at https://d2zb6habqv1546.cloudfront.net
