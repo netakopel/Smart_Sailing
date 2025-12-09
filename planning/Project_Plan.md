@@ -186,10 +186,12 @@ Now that the full system is working end-to-end, implement TWO wind-aware algorit
   - Define simplified polar tables for each boat type
   - Implement bilinear interpolation: `get_boat_speed(wind_speed, wind_angle, boat_type)`
   - Calculate optimal VMG angles for each boat type
-- [ ] Add regional weather grid fetching to `backend/weather_fetcher.py`
+- [x] Add regional weather grid fetching to `backend/weather_fetcher.py`
   - New function: `fetch_regional_weather_grid(bounds, departure_time)`
   - Get weather for entire route area (not just waypoints)
   - Simple 2D grid for interpolation at arbitrary points
+  - New function: `interpolate_weather(position, time, weather_grid)`
+  - Tested and working! (40 grid points, 1960 weather data points)
 - [ ] Create `backend/wind_router.py` for wind pattern analysis and scenario classification
   - Analyze prevailing winds along route corridor
   - Classify sailing scenario (upwind/downwind/beam reach)
