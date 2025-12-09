@@ -174,17 +174,56 @@ Deploy frontend to AWS.
 **S3 Bucket:** `smart-sailing-planner-frontend`
 **CloudFront Distribution:** `d2zb6habqv1546.cloudfront.net`
 
-### Phase 5: Smart Route Algorithm (Days 11-13)
-Now that the full system is working end-to-end, improve the route generation algorithm to be wind-aware.
+### Phase 5: Smart Route Algorithm (Days 11-20)
+Now that the full system is working end-to-end, implement TWO wind-aware algorithms that work together:
+1. **Hybrid Pattern-Based** - Fast, uses sailing tactics (tacking, VMG optimization)
+2. **Isochrone Optimization** - Slower, finds mathematically optimal path
 
-- [ ] Add boat polar diagrams (speed at each wind angle) to `BOAT_PROFILES`
-- [ ] Fetch regional wind forecast BEFORE generating routes
-- [ ] Calculate optimal VMG (Velocity Made Good) angles for each boat type
-- [ ] Generate routes that maximize time spent at favorable wind angles
-- [ ] Consider implementing isochrone algorithm for true optimal routing
-- [ ] Update `route_generator.py` while keeping the same interface (minimal changes to rest of system)
+**Strategy**: Run both algorithms, score all generated routes, return the top 3 to the user.
 
-**Goal**: Replace naive geometric routes with wind-optimized routes that consider boat polars and weather forecasts upfront.
+#### Phase 5A: Foundation & Hybrid Algorithm (Days 11-14)
+- [ ] Create `backend/polars.py` with polar diagram data and interpolation functions
+  - Define simplified polar tables for each boat type
+  - Implement bilinear interpolation: `get_boat_speed(wind_speed, wind_angle, boat_type)`
+  - Calculate optimal VMG angles for each boat type
+- [ ] Add regional weather grid fetching to `backend/weather_fetcher.py`
+  - New function: `fetch_regional_weather_grid(bounds, departure_time)`
+  - Get weather for entire route area (not just waypoints)
+  - Simple 2D grid for interpolation at arbitrary points
+- [ ] Create `backend/wind_router.py` for wind pattern analysis and scenario classification
+  - Analyze prevailing winds along route corridor
+  - Classify sailing scenario (upwind/downwind/beam reach)
+  - Detect no-go zones
+- [ ] Build hybrid pattern-based route generator in `wind_router.py`
+  - **Tacking route** (if upwind): Zigzag at optimal VMG angle
+  - **VMG-optimized route**: Follow best sailing angles
+  - **Weather-seeking route**: Curve toward favorable winds
+  - Return 3 routes in standard format
+
+#### Phase 5B: Isochrone Algorithm (Days 15-19)
+- [ ] Create `backend/isochrone_router.py` with core isochrone propagation
+  - Implement time-based forward propagation
+  - Try all possible headings at each step (e.g., every 10°)
+  - Calculate boat speed using polars + weather at each point
+- [ ] Add pruning and path reconstruction for isochrones
+  - Prune dominated solutions (keep only Pareto-optimal points)
+  - Trace back optimal path from destination to start
+  - Generate 2-3 route variations (fastest, safest)
+  - Optimize: adaptive time step, angular resolution tuning
+
+#### Phase 5C: Integration & Testing (Day 20)
+- [ ] Wire both algorithms in `lambda_function.py`
+  - Run both hybrid AND isochrone algorithms
+  - Collect all generated routes (5-6 total)
+  - Score all routes using existing `route_scorer.py`
+  - Sort by score and return top 3
+- [ ] Test both algorithms on varied scenarios and compare results
+  - Short route (50nm) uniform wind → Expect hybrid to match/beat isochrone
+  - Long route (200nm) complex weather → Expect isochrone to win
+  - Upwind, downwind, and beam reach scenarios
+  - Verify routes respect no-go zones and use proper sailing tactics
+
+**Goal**: Replace naive geometric routes with wind-optimized routes using BOTH pattern-based heuristics and optimal isochrone search. User always gets the 3 best routes automatically.
 
 ### Phase 6: Polish & Testing (Days 14-15)
 Make it interview-ready.
