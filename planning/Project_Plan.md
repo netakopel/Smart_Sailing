@@ -192,15 +192,16 @@ Now that the full system is working end-to-end, implement TWO wind-aware algorit
   - Simple 2D grid for interpolation at arbitrary points
   - New function: `interpolate_weather(position, time, weather_grid)`
   - Tested and working! (40 grid points, 1960 weather data points)
-- [ ] Create `backend/wind_router.py` for wind pattern analysis and scenario classification
+- [x] Create `backend/wind_router.py` for wind pattern analysis and scenario classification
   - Analyze prevailing winds along route corridor
   - Classify sailing scenario (upwind/downwind/beam reach)
   - Detect no-go zones
-- [ ] Build hybrid pattern-based route generator in `wind_router.py`
+- [x] Build hybrid pattern-based route generator in `wind_router.py`
   - **Tacking route** (if upwind): Zigzag at optimal VMG angle
   - **VMG-optimized route**: Follow best sailing angles
   - **Weather-seeking route**: Curve toward favorable winds
   - Return 3 routes in standard format
+  - Tested and working! Scenario classification passes all tests
 
 #### Phase 5B: Isochrone Algorithm (Days 15-19)
 - [ ] Create `backend/isochrone_router.py` with core isochrone propagation
