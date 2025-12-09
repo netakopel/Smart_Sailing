@@ -520,26 +520,13 @@ def get_boat_speed(
     q21 = polar[ws_high][wa_low]   # Lower-right
     q22 = polar[ws_high][wa_high]  # Upper-right
     
-    # Perform bilinear interpolation
-    if ws_low == ws_high and wa_low == wa_high:
-        # Exact match in polar table
-        return q11
-    elif ws_low == ws_high:
-        # Linear interpolation in angle only
-        t = (wind_angle - wa_low) / (wa_high - wa_low) if wa_high != wa_low else 0
-        return q11 + t * (q12 - q11)
-    elif wa_low == wa_high:
-        # Linear interpolation in wind speed only
-        t = (wind_speed - ws_low) / (ws_high - ws_low) if ws_high != ws_low else 0
-        return q11 + t * (q21 - q11)
-    else:
-        # Full bilinear interpolation
-        return bilinear_interpolate(
-            wind_speed, wind_angle,
-            ws_low, ws_high,
-            wa_low, wa_high,
-            q11, q12, q21, q22
-        )
+    # Perform bilinear interpolation (handles all cases: exact match, linear, bilinear)
+    return bilinear_interpolate(
+        wind_speed, wind_angle,
+        ws_low, ws_high,
+        wa_low, wa_high,
+        q11, q12, q21, q22
+    )
 
 
 def get_optimal_vmg_angle(
@@ -586,13 +573,8 @@ def get_optimal_vmg_angle(
         if boat_speed == 0:
             continue  # In no-go zone
         
-        # Calculate angle off course (how far this heading is from destination)
-        angle_off = abs(heading - destination_bearing)
-        if angle_off > 180:
-            angle_off = 360 - angle_off
-        
         # Calculate VMG toward destination
-        vmg = boat_speed * math.cos(math.radians(angle_off))
+        vmg = calculate_vmg(boat_speed, heading, destination_bearing)
         
         # Track best heading
         if vmg > max_vmg:
