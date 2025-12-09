@@ -174,28 +174,8 @@ Deploy frontend to AWS.
 **S3 Bucket:** `smart-sailing-planner-frontend`
 **CloudFront Distribution:** `d2zb6habqv1546.cloudfront.net`
 
-### Phase 5: Polish & Testing (Days 11-12)
-Make it interview-ready.
-
-- [ ] Test with various routes (short, long, different regions)
-- [ ] Handle edge cases
-- [ ] Improve error messages
-- [ ] Add loading animations
-- [ ] Make responsive for mobile
-- [ ] Performance optimization
-
-### Phase 6: Documentation & Demo Prep (Days 13-14)
-Prepare for interviews.
-
-- [ ] Write comprehensive README with screenshots
-- [ ] Document architecture decisions
-- [ ] Prepare demo routes (impressive examples)
-- [ ] Practice explaining the code
-- [ ] Prepare answers for likely interview questions
-- [ ] Optional: Record demo video
-
-### Phase 7: Smart Route Algorithm (Future Enhancement)
-After the full system is working end-to-end, improve the route generation algorithm to be wind-aware.
+### Phase 5: Smart Route Algorithm (Days 11-13)
+Now that the full system is working end-to-end, improve the route generation algorithm to be wind-aware.
 
 - [ ] Add boat polar diagrams (speed at each wind angle) to `BOAT_PROFILES`
 - [ ] Fetch regional wind forecast BEFORE generating routes
@@ -205,6 +185,26 @@ After the full system is working end-to-end, improve the route generation algori
 - [ ] Update `route_generator.py` while keeping the same interface (minimal changes to rest of system)
 
 **Goal**: Replace naive geometric routes with wind-optimized routes that consider boat polars and weather forecasts upfront.
+
+### Phase 6: Polish & Testing (Days 14-15)
+Make it interview-ready.
+
+- [ ] Test with various routes (short, long, different regions)
+- [ ] Handle edge cases
+- [ ] Improve error messages
+- [ ] Add loading animations
+- [ ] Make responsive for mobile
+- [ ] Performance optimization
+
+### Phase 7: Documentation & Demo Prep (Days 16-17)
+Prepare for interviews.
+
+- [ ] Write comprehensive README with screenshots
+- [ ] Document architecture decisions
+- [ ] Prepare demo routes (impressive examples)
+- [ ] Practice explaining the code
+- [ ] Prepare answers for likely interview questions
+- [ ] Optional: Record demo video
 
 ---
 
@@ -351,11 +351,12 @@ Response:
 | Phase 2: Lambda Deployment | ✅ Done | API live at AWS! |
 | Phase 3: Frontend Development | ✅ Done | React app with beautiful UI |
 | Phase 4: Frontend Deployment | ✅ Done | Live at CloudFront! |
-| Phase 5: Polish & Testing | ⬜ Not started | Next step |
-| Phase 6: Documentation | ⬜ Not started | |
-| Phase 7: Smart Route Algorithm | ⬜ Future | Wind-aware route generation |
+| Phase 5: Smart Route Algorithm | ⬜ Not started | Next step - Wind-aware routing |
+| Phase 6: Polish & Testing | ⬜ Not started | |
+| Phase 7: Documentation | ⬜ Not started | |
 
 ---
 
-**Timeline:** 2 weeks (14 days)
+**Timeline:** ~17 days (prioritizing smart algorithm over polish)
 **Current Status:** Phase 4 COMPLETE! App is live at https://d2zb6habqv1546.cloudfront.net
+**Next Priority:** Phase 5 - Smart Route Algorithm (wind-aware routing)
