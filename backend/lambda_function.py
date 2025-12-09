@@ -67,7 +67,10 @@ def lambda_handler(event, context):
     }
     
     # Handle CORS preflight request
-    if event.get("httpMethod") == "OPTIONS":
+    # HTTP API v2 uses requestContext.http.method, REST API v1 uses httpMethod
+    http_method = event.get("requestContext", {}).get("http", {}).get("method") or event.get("httpMethod")
+    
+    if http_method == "OPTIONS":
         return {
             "statusCode": 200,
             "headers": headers,
