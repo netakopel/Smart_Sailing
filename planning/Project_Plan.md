@@ -182,7 +182,7 @@ Now that the full system is working end-to-end, implement TWO wind-aware algorit
 **Strategy**: Run both algorithms, score all generated routes, return the top 3 to the user.
 
 #### Phase 5A: Foundation & Hybrid Algorithm (Days 11-14)
-- [ ] Create `backend/polars.py` with polar diagram data and interpolation functions
+- [x] Create `backend/polars.py` with polar diagram data and interpolation functions
   - Define simplified polar tables for each boat type
   - Implement bilinear interpolation: `get_boat_speed(wind_speed, wind_angle, boat_type)`
   - Calculate optimal VMG angles for each boat type
