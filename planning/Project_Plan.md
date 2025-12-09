@@ -234,6 +234,10 @@ Make it interview-ready.
 - [ ] Add loading animations
 - [ ] Make responsive for mobile
 - [ ] Performance optimization
+- [ ] **Consider polar data improvements**:
+  - Option A: Integrate real polar data from ORC database (https://jieter.github.io/orc-data/)
+  - Option B: Allow users to input custom polar data for their specific boat in UI
+  - Current: Using simplified theoretical polars (good for demo, may want real data for production)
 
 ### Phase 7: Documentation & Demo Prep (Days 16-17)
 Prepare for interviews.
