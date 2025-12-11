@@ -34,7 +34,7 @@ from route_generator import (
     calculate_route_distance, format_duration, GeneratedRoute, RouteType
 )
 from weather_fetcher import fetch_regional_weather_grid, interpolate_weather, calculate_forecast_hours_needed
-from polars import get_boat_speed, calculate_wind_angle, normalize_angle
+from polars import get_boat_speed, calculate_wind_angle, normalize_angle, is_in_no_go_zone
 
 
 # ============================================================================
@@ -92,8 +92,8 @@ ANGULAR_STEP_DEFAULT = 15  # Try 24 directions (360/15)
 ANGULAR_STEP_NEAR_GOAL = 10  # Finer resolution near goal
 
 # Grid cell size for pruning (degrees)
-GRID_CELL_SIZE = 0.1  # ~6 nautical miles at mid-latitudes
-GRID_CELL_SIZE_NEAR_GOAL = 0.05  # Finer grid when close to goal
+GRID_CELL_SIZE = 0.15  # ~9 nautical miles at mid-latitudes (larger to allow tacking patterns)
+GRID_CELL_SIZE_NEAR_GOAL = 0.05  # Finer grid when close to goal for precision
 
 # Maximum isochrone size to prevent exponential explosion
 MAX_ISOCHRONE_SIZE = 100  # If isochrone grows beyond this, use aggressive pruning
@@ -131,15 +131,26 @@ def get_grid_cell(position: Coordinates, cell_size: float) -> Tuple[int, int]:
     return (lat_cell, lng_cell)
 
 
-def get_adaptive_grid_cell_size(distance_to_goal: float) -> float:
+def get_adaptive_grid_cell_size(distance_to_goal: float, exploration_level: int = 0) -> float:
     """
-    Get grid cell size based on distance to goal.
+    Get grid cell size based on distance to goal and exploration level.
     
-    Larger cells (less aggressive pruning) when far from goal.
+    Larger cells (less aggressive pruning) when far from goal or early in exploration.
     Smaller cells (more aggressive pruning) when close to goal.
+    
+    Args:
+        distance_to_goal: Distance to destination in nm
+        exploration_level: Number of cells visited (for tacking patterns)
     """
+    # Very early exploration: use EXTRA large cells to allow tacking patterns to develop
+    if exploration_level < 50:
+        return GRID_CELL_SIZE * 2.0  # 0.3° = ~18nm
+    
+    # Near goal: use fine grid for precision
     if distance_to_goal < 10:
         return GRID_CELL_SIZE_NEAR_GOAL
+    
+    # Default
     return GRID_CELL_SIZE
 
 
@@ -236,15 +247,23 @@ def should_prune_point(
     distance_to_goal = calculate_distance(point.position, destination)
     
     # Strategy 1: Grid-based pruning (adaptive grid size)
-    cell_size = get_adaptive_grid_cell_size(distance_to_goal)
+    cell_size = get_adaptive_grid_cell_size(distance_to_goal, len(state.visited_grid))
     cell = get_grid_cell(point.position, cell_size)
     
     if cell in state.visited_grid:
         # We've been to this grid cell before
         previous_best_time = state.visited_grid[cell]
         
-        # Be lenient early on (allow 10% slower times to pass through)
-        time_tolerance = 0.1 if len(state.visited_grid) < 20 else 0.0
+        # Be progressively more lenient based on exploration stage
+        # Early on (< 30 cells), we're still discovering tacking patterns - be very lenient
+        # Medium (30-100 cells), moderate leniency
+        # Late (> 100 cells), strict
+        if len(state.visited_grid) < 30:
+            time_tolerance = 0.3  # Allow 30% slower routes early on
+        elif len(state.visited_grid) < 100:
+            time_tolerance = 0.15  # Allow 15% slower in middle phase
+        else:
+            time_tolerance = 0.05  # Only 5% tolerance when well-explored
         
         if point.time_hours > previous_best_time * (1 + time_tolerance):
             # Current point is significantly slower - prune it
@@ -258,20 +277,28 @@ def should_prune_point(
     if distance_to_goal < state.closest_distance_to_goal:
         state.closest_distance_to_goal = distance_to_goal
     
-    # Only apply distance-based pruning after we've explored sufficiently
-    # This allows tacking routes that initially go "sideways" or even slightly away from goal
-    if len(state.visited_grid) < 20:
-        # Very early in the route: be extremely lenient to allow tacking patterns to develop
-        # Only prune if point is absurdly far from goal
+    # Distance-based pruning needs to be VERY lenient for upwind/tacking scenarios
+    # The key insight: tacking routes must go sideways before making progress
+    
+    # Calculate how much we've explored
+    exploration_level = len(state.visited_grid)
+    
+    if exploration_level < 50:
+        # Very early: allow routes that go way off course (for tacking patterns)
+        # Only prune if ABSURDLY far (10x the current best distance)
+        if distance_to_goal > state.closest_distance_to_goal * 10.0:
+            return True
+    elif exploration_level < 150:
+        # Medium exploration: still generous (5x multiplier)
         if distance_to_goal > state.closest_distance_to_goal * 5.0:
             return True
     elif state.closest_distance_to_goal > 30:
-        # Far from goal: moderate pruning
-        if distance_to_goal > state.closest_distance_to_goal * 2.5:
+        # Well-explored, far from goal: moderate pruning
+        if distance_to_goal > state.closest_distance_to_goal * 3.0:
             return True
     elif state.closest_distance_to_goal > 10:
-        # Medium distance: moderate pruning
-        if distance_to_goal > state.closest_distance_to_goal * 2.0:
+        # Well-explored, medium distance: tighter pruning
+        if distance_to_goal > state.closest_distance_to_goal * 2.5:
             return True
     # else: Near goal (<10nm): minimal distance-based pruning, rely on grid pruning
     
@@ -399,8 +426,8 @@ def propagate_isochrone(
             wind_angle = calculate_wind_angle(heading, weather.wind_direction)
             
             # Optimization 2: Skip no-go zone (boat speed = 0)
-            # For sailboats, wind angles < 45° are impossible
-            if boat_type.lower() in ['sailboat', 'catamaran'] and abs(wind_angle) < 45:
+            # For sailboats/catamarans, wind angles < 45° are impossible
+            if is_in_no_go_zone(wind_angle, boat_type):
                 debug_counters['skipped_no_go'] += 1
                 continue
             
@@ -414,13 +441,14 @@ def propagate_isochrone(
             # Debug: track boat speeds for analysis
             if 'speeds' not in debug_counters:
                 debug_counters['speeds'] = []
-            debug_counters['speeds'].append((heading, wind_angle, boat_speed))
+            if len(debug_counters['speeds']) < 10:  # Track more samples
+                debug_counters['speeds'].append((heading, wind_angle, boat_speed))
             
             # Calculate distance traveled in this time step
             distance_nm = boat_speed * time_step_hours
             
             # Calculate new position
-            new_position = calculate_destination(point.position, heading, distance_nm)
+            new_position = calculate_destination(point.position, distance_nm, heading)
             
             # Create new isochrone point
             new_point = IsochronePoint(
@@ -450,10 +478,14 @@ def propagate_isochrone(
         print(f"    Pruned: {debug_counters['pruned']}")
         print(f"    Added: {debug_counters['added']}")
         if 'speeds' in debug_counters and debug_counters['speeds']:
-            speeds_sample = debug_counters['speeds'][:5]  # Show first 5
-            print(f"    Sample speeds (hdg, wind_ang, speed):")
+            speeds_sample = debug_counters['speeds']
+            print(f"    Sample speeds (first {len(speeds_sample)} valid headings):")
             for hdg, wa, spd in speeds_sample:
                 print(f"      {hdg}deg wind@{wa:.0f}deg = {spd:.1f}kt")
+            # Check if we tried heading toward goal
+            destination_bearing = calculate_bearing(current_isochrone[0].position if current_isochrone else None, destination)
+            if destination_bearing and current_isochrone:
+                print(f"    Bearing to goal: {destination_bearing:.0f}deg")
     
     # Safety check: if isochrone is growing too large, apply aggressive pruning
     if len(next_isochrone) > max_size:
