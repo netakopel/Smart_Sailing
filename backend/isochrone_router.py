@@ -669,10 +669,10 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
         forecast_hours=forecast_hours
     )
     
-    print(f"  Grid points: {len(weather_grid.get('points', []))}")
+    print(f"  Grid points: {len(weather_grid.get('grid_points', []))}")
     
     # Check if we have weather data
-    if not weather_grid.get('points'):
+    if not weather_grid.get('grid_points') or not weather_grid.get('weather_data'):
         print("\n[ERROR] No weather data available - cannot calculate route")
         return []
     

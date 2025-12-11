@@ -10,6 +10,7 @@ from datetime import datetime
 
 from models import RouteRequest, Coordinates, BoatType
 from route_generator import generate_routes, calculate_distance
+from isochrone_router import generate_isochrone_routes
 from weather_fetcher import fetch_weather_for_waypoints
 from route_scorer import score_route
 
@@ -110,8 +111,15 @@ def lambda_handler(event, context):
             departure_time=body["departure_time"]
         )
         
-        # Step 1: Generate route options
-        generated_routes = generate_routes(request)
+        # Step 1: Generate route options using ISOCHRONE algorithm
+        print("[ALGORITHM] Using Isochrone optimal routing")
+        generated_routes = generate_isochrone_routes(request)
+        
+        # If isochrone fails or returns no routes, fallback to naive
+        if not generated_routes:
+            print("[FALLBACK] Isochrone returned no routes, using naive routes")
+            generated_routes = generate_routes(request)
+        
         direct_distance = calculate_distance(request.start, request.end)
         
         # Step 2: Fetch weather for each route
