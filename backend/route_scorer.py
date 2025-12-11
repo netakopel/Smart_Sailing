@@ -178,6 +178,8 @@ def score_route(
     - Visibility (15%)
     - Distance efficiency (25%)
     
+    CRITICAL: Routes entering dangerous "no-go zones" receive severe penalties
+    
     Args:
         route: Generated route with waypoints and weather
         boat_type: Type of boat
@@ -200,6 +202,10 @@ def score_route(
     
     # Track if any weather data is estimated (API failed)
     estimated_weather_count = 0
+    
+    # Track dangerous conditions that should heavily penalize the route
+    danger_penalty = 0
+    dangerous_waypoints = 0
     
     # Score each waypoint/segment
     for i, waypoint in enumerate(route.waypoints):
@@ -234,6 +240,21 @@ def score_route(
             if ('Dangerous' in note or 'exceeds' in note) and note not in all_warnings:
                 all_warnings.append(note)
         
+        # CRITICAL: Check if this waypoint is in a "no-go zone" (dangerous conditions)
+        is_dangerous = False
+        if waypoint.weather.wind_speed > boat.max_safe_wind_speed:
+            is_dangerous = True
+            danger_penalty += 30  # Severe penalty per dangerous waypoint
+        if waypoint.weather.wave_height > boat.max_safe_wave_height:
+            is_dangerous = True
+            danger_penalty += 25  # Severe penalty per dangerous waypoint
+        if waypoint.weather.visibility < 1:  # Very poor visibility
+            is_dangerous = True
+            danger_penalty += 15
+        
+        if is_dangerous:
+            dangerous_waypoints += 1
+        
         segments_scored += 1
     
     # Distance scoring
@@ -252,6 +273,15 @@ def score_route(
         avg_vis * 0.15 +
         distance_score * 0.25
     )
+    
+    # Apply danger penalty - routes through no-go zones get heavily penalized
+    final_score -= danger_penalty
+    
+    # Add prominent warning if route goes through dangerous areas
+    if dangerous_waypoints > 0:
+        danger_warning = f"DANGER: Route passes through {dangerous_waypoints} unsafe waypoint(s)"
+        all_warnings.insert(0, danger_warning)  # Put at top
+        all_cons.append(f"Passes through dangerous conditions ({dangerous_waypoints} waypoints)")
     
     # Generate pros and cons based on weather summary
     weather_summary = summarize_weather(route.waypoints)
