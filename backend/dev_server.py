@@ -14,7 +14,7 @@ from flask_cors import CORS
 from datetime import datetime
 import traceback
 
-from models import RouteRequest, Coordinates, BoatType
+from models import RouteRequest, Coordinates, BoatType, BOAT_PROFILES
 from wind_router import generate_hybrid_routes
 from isochrone_router import generate_isochrone_routes
 from weather_fetcher import fetch_weather_for_waypoints
@@ -183,10 +183,42 @@ def calculate_routes():
         
         # Step 2: Fetch weather for each route (waypoints already have timing, just need weather data)
         print("\n[2] Fetching weather for waypoints...")
+        boat = BOAT_PROFILES[route_request.boat_type]
         routes_with_weather = []
         for route in generated_routes:
             print(f"   {route.name}: {len(route.waypoints)} waypoints...")
             waypoints_with_weather = fetch_weather_for_waypoints(route.waypoints)
+            
+            # Check for no-go zones and dangerous conditions
+            no_go_count = 0
+            dangerous_count = 0
+            for i, wp in enumerate(waypoints_with_weather):
+                if wp.weather:
+                    # Check if sailing into wind (no-go zone) for sailboats
+                    if i < len(waypoints_with_weather) - 1:
+                        from route_generator import calculate_bearing
+                        from polars import is_in_no_go_zone, calculate_wind_angle
+                        
+                        heading = calculate_bearing(wp.position, waypoints_with_weather[i+1].position)
+                        wind_angle = calculate_wind_angle(heading, wp.weather.wind_direction)
+                        
+                        if is_in_no_go_zone(wind_angle, boat.boat_type.value):
+                            no_go_count += 1
+                            print(f"      [NO-GO] Wind angle: {wind_angle:.0f}° (sailing into wind!)")
+                    
+                    # Check dangerous conditions
+                    if wp.weather.wind_speed > boat.max_safe_wind_speed:
+                        dangerous_count += 1
+                        print(f"      [DANGER] Wind: {wp.weather.wind_speed:.1f}kt (limit: {boat.max_safe_wind_speed}kt)")
+                    if wp.weather.wave_height > boat.max_safe_wave_height:
+                        dangerous_count += 1
+                        print(f"      [DANGER] Waves: {wp.weather.wave_height:.1f}m (limit: {boat.max_safe_wave_height}m)")
+            
+            if no_go_count > 0:
+                print(f"      >>> {no_go_count} NO-GO ZONE waypoint(s) detected!")
+            if dangerous_count > 0:
+                print(f"      >>> {dangerous_count} DANGEROUS condition(s) detected!")
+            
             route.waypoints = waypoints_with_weather
             routes_with_weather.append(route)
         
@@ -198,18 +230,23 @@ def calculate_routes():
             danger_indicator = " [DANGER!]" if any("DANGER" in w for w in scored.warnings) else ""
             print(f"   {scored.name}: {scored.score}/100{danger_indicator}")
             if danger_indicator:
-                print(f"      -> {[w for w in scored.warnings if 'DANGER' in w][0]}")
+                danger_warnings = [w for w in scored.warnings if 'DANGER' in w]
+                if danger_warnings:
+                    print(f"      -> {danger_warnings[0]}")
             scored_routes.append(scored)
         
         # Sort by score (highest first)
         scored_routes.sort(key=lambda r: r.score, reverse=True)
         
-        # Return only top 3 routes
-        top_routes = scored_routes[:3]
-        
-        print(f"\n[OK] Returning top {len(top_routes)} routes (from {len(scored_routes)} total)")
-        for i, route in enumerate(top_routes, 1):
+        # Show ALL scores
+        print(f"\n[ALL ROUTES RANKED]:")
+        for i, route in enumerate(scored_routes, 1):
             print(f"   #{i}: {route.name} - {route.score}/100")
+        
+        # Return ALL routes (not just top 3)
+        top_routes = scored_routes  # Changed to show all routes
+        
+        print(f"\n[OK] Returning all {len(top_routes)} routes")
         
         # Build response
         response_body = {

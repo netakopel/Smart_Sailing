@@ -15,31 +15,18 @@ from models import (
 )
 from route_generator import GeneratedRoute, calculate_bearing
 from weather_fetcher import summarize_weather
+from polars import is_in_no_go_zone, calculate_wind_angle as calculate_wind_angle_polar
 
 
-def calculate_wind_angle(boat_heading: float, wind_direction: float) -> float:
-    """
-    Calculate wind angle relative to boat heading.
-    
-    Args:
-        boat_heading: Direction boat is traveling (degrees)
-        wind_direction: Direction wind is coming FROM (degrees)
-        
-    Returns:
-        Angle between 0-180 degrees
-        - 0 = headwind (wind in your face)
-        - 90 = beam reach (wind from side)
-        - 180 = downwind (wind from behind)
-    """
-    # Wind direction is where wind comes FROM
-    # Convert to where it's going TO
-    wind_to = (wind_direction + 180) % 360
-    
-    angle = abs(boat_heading - wind_to)
-    if angle > 180:
-        angle = 360 - angle
-    
-    return angle
+# NOTE: Using calculate_wind_angle from polars.py instead
+# The function below was calculating opposite values and causing bugs
+# def calculate_wind_angle(boat_heading: float, wind_direction: float) -> float:
+#     """DEPRECATED - use calculate_wind_angle from polars.py"""
+#     wind_to = (wind_direction + 180) % 360
+#     angle = abs(boat_heading - wind_to)
+#     if angle > 180:
+#         angle = 360 - angle
+#     return angle
 
 
 def score_wind_conditions(
@@ -56,7 +43,7 @@ def score_wind_conditions(
     notes = []
     score = 100.0
     
-    wind_angle = calculate_wind_angle(boat_heading, weather.wind_direction)
+    wind_angle = calculate_wind_angle_polar(boat_heading, weather.wind_direction)
     
     # For sailboats, wind angle matters a lot
     if boat.boat_type in [BoatType.SAILBOAT, BoatType.CATAMARAN]:
@@ -65,13 +52,17 @@ def score_wind_conditions(
             score -= 30
             notes.append(f"Low wind ({weather.wind_speed}kt) - may need motor")
         
-        # Headwind = slow and requires tacking
+        # NO-GO ZONE: Heading into wind = boat can't sail efficiently or at all
         if wind_angle < 45:
-            score -= 25
-            notes.append("Headwind - will need to tack")
+            score -= 90  # MASSIVE penalty - boat essentially can't sail here
+            notes.append(f"NO-GO ZONE: Heading into wind ({wind_angle:.0f}°) - boat can't sail")
+        elif wind_angle < 60:
+            score -= 50  # Still very poor sailing angle
+            notes.append(f"Very close to wind ({wind_angle:.0f}°) - poor performance")
         # Beam reach to broad reach = ideal for sailing
         elif 90 <= wind_angle <= 150:
             score += 10  # bonus!
+            notes.append(f"Good sailing angle ({wind_angle:.0f}°)")
     
     # High wind is dangerous for all boats
     if weather.wind_speed > boat.max_safe_wind_speed:
@@ -203,7 +194,11 @@ def score_route(
     # Track if any weather data is estimated (API failed)
     estimated_weather_count = 0
     
-    # Track dangerous conditions that should heavily penalize the route
+    # Track no-go zone waypoints (sailing into wind) - should heavily penalize the route
+    no_go_penalty = 0
+    no_go_waypoints = 0
+    
+    # Track dangerous conditions (high wind/waves)
     danger_penalty = 0
     dangerous_waypoints = 0
     
@@ -218,6 +213,19 @@ def score_route(
         
         # Use bearing of the segment starting at this waypoint
         heading = bearings[min(i, len(bearings) - 1)] if bearings else 0
+        
+        # Calculate wind angle for no-go zone detection (use polars.py function!)
+        wind_angle = calculate_wind_angle_polar(heading, waypoint.weather.wind_direction)
+        
+        # DEBUG: Print wind angle info for sailboats/catamarans (disabled for cleaner output)
+        # if boat.boat_type in [BoatType.SAILBOAT, BoatType.CATAMARAN]:
+        #     print(f"      [DEBUG] WP{i}: heading={heading:.1f}°, wind_from={waypoint.weather.wind_direction:.1f}°, wind_angle={wind_angle:.1f}°")
+        
+        # Check if sailing in NO-GO ZONE (can't sail into wind)
+        if is_in_no_go_zone(wind_angle, boat.boat_type.value):
+            no_go_waypoints += 1
+            # Very light penalty - only count waypoints for now
+            # print(f"      [NO-GO ZONE] Wind angle: {wind_angle:.0f}°, Total waypoints: {no_go_waypoints}")
         
         # Wind scoring
         wind_score, wind_notes = score_wind_conditions(
@@ -237,20 +245,20 @@ def score_route(
         
         # Collect warnings (only unique, serious ones)
         for note in wind_notes + wave_notes + vis_notes:
-            if ('Dangerous' in note or 'exceeds' in note) and note not in all_warnings:
+            if ('Dangerous' in note or 'exceeds' in note or 'NO-GO' in note) and note not in all_warnings:
                 all_warnings.append(note)
         
-        # CRITICAL: Check if this waypoint is in a "no-go zone" (dangerous conditions)
+        # Also check for dangerous conditions (high wind/waves/poor visibility)
         is_dangerous = False
         if waypoint.weather.wind_speed > boat.max_safe_wind_speed:
             is_dangerous = True
-            danger_penalty += 30  # Severe penalty per dangerous waypoint
+            danger_penalty += 80  # MASSIVE penalty - route should be disqualified
         if waypoint.weather.wave_height > boat.max_safe_wave_height:
             is_dangerous = True
-            danger_penalty += 25  # Severe penalty per dangerous waypoint
+            danger_penalty += 70  # MASSIVE penalty - route should be disqualified
         if waypoint.weather.visibility < 1:  # Very poor visibility
             is_dangerous = True
-            danger_penalty += 15
+            danger_penalty += 40  # Heavy penalty
         
         if is_dangerous:
             dangerous_waypoints += 1
@@ -274,10 +282,27 @@ def score_route(
         distance_score * 0.25
     )
     
-    # Apply danger penalty - routes through no-go zones get heavily penalized
-    final_score -= danger_penalty
+    # Apply very light no-go zone penalty - only if there are MANY waypoints in no-go zone
+    if no_go_waypoints > 10:
+        no_go_penalty = 20  # Light penalty - only for routes with 10+ no-go waypoints
+    else:
+        no_go_penalty = 0  # No penalty for routes with few no-go waypoints
     
-    # Add prominent warning if route goes through dangerous areas
+    # Apply penalties
+    print(f"   [SCORING] Base score: {final_score}, No-go waypoints: {no_go_waypoints}, No-go penalty: {no_go_penalty}, Danger penalty: {danger_penalty}")
+    final_score -= no_go_penalty
+    final_score -= danger_penalty
+    print(f"   [SCORING] Final score after penalties: {final_score}")
+    
+    # Add warning if route has many no-go zone waypoints
+    if no_go_waypoints > 5:
+        all_cons.append(f"Some sailing into wind ({no_go_waypoints} waypoints)")
+    
+    if no_go_waypoints > 10:
+        no_go_warning = f"Route sails into wind at {no_go_waypoints} waypoint(s)"
+        all_warnings.append(no_go_warning)
+    
+    # Add warning if route goes through dangerous conditions
     if dangerous_waypoints > 0:
         danger_warning = f"DANGER: Route passes through {dangerous_waypoints} unsafe waypoint(s)"
         all_warnings.insert(0, danger_warning)  # Put at top
