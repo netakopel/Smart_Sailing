@@ -35,8 +35,10 @@ jobs:
     - name: Run tests with pytest
       run: |
         cd backend
-        # Run pytest on all test files except test_dev_server.py (requires running server)
-        python -m pytest --ignore=test_dev_server.py -v --tb=short
+        # Run only test files with proper pytest test functions
+        # test_dev_server.py requires a running server (integration test)
+        # test_cone.py, test_heading_180.py, test_pruning_debug.py are debug scripts, not pytest tests
+        python -m pytest test_isochrone_simple.py -v --tb=short
       continue-on-error: false
     
     - name: Test summary
