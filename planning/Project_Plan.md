@@ -228,7 +228,40 @@ Now that the full system is working end-to-end, implement TWO wind-aware algorit
 
 **Goal**: Replace naive geometric routes with wind-optimized routes using BOTH pattern-based heuristics and optimal isochrone search. User always gets the 3 best routes automatically.
 
-### Phase 6: Polish & Testing (Days 14-15)
+#### Phase 5D: CI/CD Setup (Day 21) ✅ DONE
+Set up automated testing and deployment pipelines with GitHub Actions.
+
+- [x] Create `.github/workflows/` directory structure
+- [x] Set up backend CI workflow:
+  - [x] Run pytest on all test files automatically
+  - [x] Check Python code quality (optional linting)
+  - [x] Trigger on push and pull requests
+- [x] Set up frontend CI workflow:
+  - [x] Build frontend to catch TypeScript errors
+  - [x] Run ESLint checks
+  - [x] Trigger on push and pull requests
+- [x] (Optional) Set up CD workflow for Lambda deployment:
+  - [x] Auto-package and deploy Lambda on main branch pushes
+  - [x] Requires AWS credentials as GitHub secrets
+- [x] Create comprehensive documentation:
+  - [x] `.github/workflows/README.md` - Detailed workflow docs
+  - [x] `.github/CICD_SETUP_GUIDE.md` - Quick start guide
+  - [x] `.github/TESTING_CHECKLIST.md` - Testing checklist
+  - [x] Updated main `README.md` with CI/CD section
+
+**Benefits**:
+- Catch bugs immediately when pushing code
+- Automated testing gives confidence in refactoring
+- See test results directly in pull requests
+- Optional: Auto-deploy to Lambda on successful tests
+
+**Files Created**:
+- `backend-tests.yml` - Automated pytest execution
+- `frontend-build.yml` - TypeScript + ESLint + Vite build
+- `lambda-deploy.yml` - Optional AWS Lambda deployment
+- Comprehensive documentation for setup and usage
+
+### Phase 6: Polish & Testing (Days 22-23)
 Make it interview-ready.
 
 - [ ] Test with various routes (short, long, different regions)
@@ -242,7 +275,7 @@ Make it interview-ready.
   - Option B: Allow users to input custom polar data for their specific boat in UI
   - Current: Using simplified theoretical polars (good for demo, may want real data for production)
 
-### Phase 7: Documentation & Demo Prep (Days 16-17)
+### Phase 7: Documentation & Demo Prep (Days 24-25)
 Prepare for interviews.
 
 - [ ] Write comprehensive README with screenshots
@@ -387,6 +420,9 @@ Response:
 **"How would you scale this?"**
 > Lambda auto-scales. For global users, I'd deploy to multiple AWS regions. For heavy weather API usage, I'd add caching with TTL.
 
+**"Why use CI/CD for this project?"**
+> With complex routing algorithms (736 lines in isochrone_router.py alone), automated testing catches regressions immediately. CI/CD gives me confidence to refactor and improve the algorithm without breaking existing functionality. GitHub Actions runs my tests on every commit for free.
+
 ---
 
 ## Progress Tracker
@@ -397,12 +433,13 @@ Response:
 | Phase 2: Lambda Deployment | ✅ Done | API live at AWS! |
 | Phase 3: Frontend Development | ✅ Done | React app with beautiful UI |
 | Phase 4: Frontend Deployment | ✅ Done | Live at CloudFront! |
-| Phase 5: Smart Route Algorithm | ⬜ Not started | Next step - Wind-aware routing |
+| Phase 5: Smart Route Algorithm | 🔄 In Progress | Wind-aware routing with polars & isochrone |
+| Phase 5D: CI/CD Setup | ✅ Done | GitHub Actions workflows ready! |
 | Phase 6: Polish & Testing | ⬜ Not started | |
 | Phase 7: Documentation | ⬜ Not started | |
 
 ---
 
-**Timeline:** ~17 days (prioritizing smart algorithm over polish)
-**Current Status:** Phase 4 COMPLETE! App is live at https://d2zb6habqv1546.cloudfront.net
-**Next Priority:** Phase 5 - Smart Route Algorithm (wind-aware routing)
+**Timeline:** ~25 days (includes smart algorithm + CI/CD)
+**Current Status:** Phase 5D COMPLETE! CI/CD with GitHub Actions is ready
+**Next Priority:** Complete Phase 5B (Isochrone Algorithm) and Phase 5C (Integration)

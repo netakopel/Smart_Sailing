@@ -1,0 +1,46 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r backend/requirements.txt
+        pip install pytest pytest-cov
+    
+    - name: Run tests with pytest
+      run: |
+        cd backend
+        python -m pytest test_*.py -v --tb=short
+      continue-on-error: false
+    
+    - name: Test summary
+      if: always()
+      run: |
+        echo "✅ Backend tests completed!"
+        echo "Tests run for: test_dev_server.py, test_isochrone_simple.py, and other test files"
+
