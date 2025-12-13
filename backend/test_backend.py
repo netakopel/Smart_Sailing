@@ -59,7 +59,6 @@ def create_mock_weather_grid(start, end, wind_direction=0.0):
                 wind_speed=15.0,
                 wind_direction=wind_direction,
                 wave_height=1.0,
-                swell_height=0.5,
                 visibility=10.0,
                 precipitation=0.0,
                 temperature=20.0
