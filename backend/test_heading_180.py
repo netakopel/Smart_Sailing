@@ -26,7 +26,7 @@ end = Coordinates(lat=50.0, lng=-1.0)
 logger.info(f"\nStart: {start.lat}N, {start.lng}E")
 logger.info(f"End: {end.lat}N, {end.lng}E")
 logger.info(f"Distance: {calculate_distance(start, end):.1f}nm")
-logger.info()
+logger.info("")
 
 # Simulate first propagation: heading 180° from start
 state = IsochroneState()
@@ -45,7 +45,7 @@ logger.info(f"Test heading: {heading}deg (toward goal)")
 logger.info(f"Wind from: {wind_direction}deg at {wind_speed}kt")
 logger.info(f"Wind angle: {wind_angle}deg")
 logger.info(f"Boat speed: {boat_speed}kt")
-logger.info()
+logger.info("")
 
 # Calculate new position after 1 hour
 distance_nm = boat_speed * 1.0  # 1 hour
@@ -57,7 +57,7 @@ logger.info(f"  New position: {new_position.lat:.3f}N, {new_position.lng:.3f}E")
 logger.info(f"  Distance traveled: {distance_nm:.1f}nm")
 logger.info(f"  New distance to goal: {new_distance_to_goal:.1f}nm")
 logger.info(f"  Progress made: {30.0 - new_distance_to_goal:.1f}nm closer!")
-logger.info()
+logger.info("")
 
 # Create the point
 new_point = IsochronePoint(
@@ -72,13 +72,13 @@ new_point = IsochronePoint(
 cell = get_grid_cell(new_position, GRID_CELL_SIZE)
 logger.info(f"Grid cell: {cell}")
 logger.info(f"Cell in visited_grid? {cell in state.visited_grid}")
-logger.info()
+logger.info("")
 
 # Test pruning
 logger.info("Testing pruning logic...")
 should_prune = should_prune_point(new_point, state, end)
 logger.info(f"  Result: {'PRUNED' if should_prune else 'KEPT'}")
-logger.info()
+logger.info("")
 
 if not should_prune:
     logger.info("SUCCESS: Point would be kept!")

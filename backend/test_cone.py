@@ -14,7 +14,7 @@ distance_to_goal = 30
 logger.info("Testing directional cone for south-bound route:")
 logger.info(f"Destination bearing: {destination_bearing}°")
 logger.info(f"Distance to goal: {distance_to_goal}nm")
-logger.info()
+logger.info("")
 
 test_headings = [0, 45, 90, 135, 180, 225, 270, 315]
 

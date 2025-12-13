@@ -76,7 +76,7 @@ logger.info(f"Start: {start.lat}N, {start.lng}E")
 logger.info(f"End:   {end.lat}N, {end.lng}E")
 logger.info(f"Distance: {calculate_distance(start, end):.1f}nm")
 logger.info(f"Wind: 15kt from NORTH (directly against us)")
-logger.info()
+logger.info("")
 
 # Simulate what happens after first propagation
 logger.info("-"*70)
