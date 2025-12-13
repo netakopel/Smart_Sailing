@@ -35,9 +35,10 @@ jobs:
     - name: Run tests with pytest
       run: |
         cd backend
-        # Run all pytest-compatible test files
+        # Run comprehensive backend test suite
+        # test_backend.py contains all unit tests for routing algorithms
         # Excluding test_dev_server.py (requires running server - integration test)
-        python -m pytest test_isochrone_simple.py test_cone.py test_heading_180.py test_pruning_debug.py -v --tb=short
+        python -m pytest test_backend.py test_isochrone_simple.py -v --tb=short
       continue-on-error: false
     
     - name: Test summary
