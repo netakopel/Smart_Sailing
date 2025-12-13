@@ -6,23 +6,23 @@ interface RouteCardsProps {
   onSelectRoute: (index: number) => void;
 }
 
-// Route type to display info
-const ROUTE_INFO: Record<string, { color: string; bgColor: string; borderColor: string }> = {
-  direct: { 
-    color: 'text-blue-400', 
-    bgColor: 'bg-blue-500/10', 
-    borderColor: 'border-blue-500' 
-  },
-  port: { 
-    color: 'text-green-400', 
-    bgColor: 'bg-green-500/10', 
-    borderColor: 'border-green-500' 
-  },
-  starboard: { 
-    color: 'text-orange-400', 
-    bgColor: 'bg-orange-500/10', 
-    borderColor: 'border-orange-500' 
-  },
+// Color palette for routes - matches Map.tsx
+const ROUTE_COLOR_CLASSES = [
+  { color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500' },      // Blue
+  { color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500' },   // Green
+  { color: 'text-orange-400', bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500' },// Orange
+  { color: 'text-purple-400', bgColor: 'bg-purple-500/10', borderColor: 'border-purple-500' },// Purple
+  { color: 'text-pink-400', bgColor: 'bg-pink-500/10', borderColor: 'border-pink-500' },      // Pink
+  { color: 'text-teal-400', bgColor: 'bg-teal-500/10', borderColor: 'border-teal-500' },      // Teal
+  { color: 'text-amber-400', bgColor: 'bg-amber-500/10', borderColor: 'border-amber-500' },   // Amber
+  { color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500' },         // Red
+  { color: 'text-cyan-400', bgColor: 'bg-cyan-500/10', borderColor: 'border-cyan-500' },      // Cyan
+  { color: 'text-violet-400', bgColor: 'bg-violet-500/10', borderColor: 'border-violet-500' },// Violet
+];
+
+// Helper to get color by index
+const getRouteColorClass = (index: number) => {
+  return ROUTE_COLOR_CLASSES[index % ROUTE_COLOR_CLASSES.length];
 };
 
 function ScoreBadge({ score }: { score: number }) {
@@ -41,23 +41,25 @@ function ScoreBadge({ score }: { score: number }) {
 function RouteCard({ 
   route, 
   index, 
+  colorIndex,
   isSelected, 
   onSelect 
 }: { 
   route: Route; 
-  index: number; 
+  index: number;
+  colorIndex: number;
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const info = ROUTE_INFO[route.type] || ROUTE_INFO.direct;
+  const info = getRouteColorClass(colorIndex);
   const isRecommended = index === 0; // First route (highest score) is recommended
 
   return (
     <div
       onClick={onSelect}
-      className={`relative p-5 rounded-xl cursor-pointer transition-all duration-300 border-2 h-80 flex flex-col
+      className={`relative p-4 rounded-xl cursor-pointer transition-all duration-300 border-2 flex flex-col
         ${isSelected 
-          ? `${info.bgColor} ${info.borderColor} shadow-lg scale-[1.02]` 
+          ? `${info.bgColor} ${info.borderColor} shadow-lg scale-[1.01]` 
           : 'bg-slate-800/60 border-slate-700 hover:border-slate-500'
         }`}
     >
@@ -90,7 +92,7 @@ function RouteCard({
       </div>
 
       {/* Scrollable content area for warnings and pros/cons */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className={`overflow-y-auto ${isSelected ? 'max-h-48' : 'max-h-32'}`}>
         {/* Warnings */}
         {route.warnings.length > 0 && (
           <div className="mb-3 space-y-1">
@@ -142,8 +144,10 @@ export default function RouteCards({ routes, selectedIndex, onSelectRoute }: Rou
     );
   }
 
-  // Sort routes by score (highest first)
-  const sortedRoutes = [...routes].sort((a, b) => b.score - a.score);
+  // Sort routes by score (highest first), but keep track of original indices
+  const sortedRoutesWithIndices = routes
+    .map((route, originalIndex) => ({ route, originalIndex }))
+    .sort((a, b) => b.route.score - a.route.score);
 
   return (
     <div className="space-y-3">
@@ -153,18 +157,15 @@ export default function RouteCards({ routes, selectedIndex, onSelectRoute }: Rou
         <span className="text-slate-500 text-sm font-normal">({routes.length} routes)</span>
       </h3>
       
-      <div className="flex flex-row gap-3">
-        {sortedRoutes.map((route, index) => (
-          <div key={route.type} className="flex-1 min-w-0">
+      <div className="flex flex-col gap-3 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
+        {sortedRoutesWithIndices.map(({ route, originalIndex }, sortedIndex) => (
+          <div key={`route-${originalIndex}`} className="w-full">
             <RouteCard
               route={route}
-              index={index}
-              isSelected={selectedIndex !== null && routes[selectedIndex]?.type === route.type}
-              onSelect={() => {
-                // Find the original index in the routes array
-                const originalIndex = routes.findIndex(r => r.type === route.type);
-                onSelectRoute(originalIndex);
-              }}
+              index={sortedIndex}
+              colorIndex={originalIndex}
+              isSelected={selectedIndex === originalIndex}
+              onSelect={() => onSelectRoute(originalIndex)}
             />
           </div>
         ))}

@@ -31,11 +31,23 @@ const endIcon = new Icon({
   className: 'end-marker'
 });
 
-// Route colors
-const ROUTE_COLORS: Record<string, string> = {
-  direct: '#3b82f6',    // Blue
-  port: '#22c55e',      // Green
-  starboard: '#f97316', // Orange
+// Route colors - expanded palette for multiple routes
+const ROUTE_COLOR_PALETTE = [
+  '#3b82f6',  // Blue
+  '#22c55e',  // Green
+  '#f97316',  // Orange
+  '#a855f7',  // Purple
+  '#ec4899',  // Pink
+  '#14b8a6',  // Teal
+  '#f59e0b',  // Amber
+  '#ef4444',  // Red
+  '#06b6d4',  // Cyan
+  '#8b5cf6',  // Violet
+];
+
+// Helper function to get color by index
+const getRouteColor = (index: number): string => {
+  return ROUTE_COLOR_PALETTE[index % ROUTE_COLOR_PALETTE.length];
 };
 
 interface MapProps {
@@ -130,16 +142,41 @@ export default function Map({
           </Marker>
         )}
 
-        {/* Route polylines */}
-        {routes.map((route, index) => (
-          <Polyline
-            key={route.type}
-            positions={getRoutePositions(route)}
-            color={ROUTE_COLORS[route.type] || '#ffffff'}
-            weight={selectedRouteIndex === index ? 5 : 3}
-            opacity={selectedRouteIndex === null || selectedRouteIndex === index ? 0.9 : 0.3}
-          />
-        ))}
+        {/* Route polylines - render in two passes: unselected first, selected last (on top) */}
+        {(() => {
+          const polylines = [];
+          
+          // First pass: render all unselected routes
+          routes.forEach((route, index) => {
+            if (selectedRouteIndex === null || selectedRouteIndex !== index) {
+              polylines.push(
+                <Polyline
+                  key={`route-unsel-${index}`}
+                  positions={getRoutePositions(route)}
+                  color={getRouteColor(index)}
+                  weight={3}
+                  opacity={selectedRouteIndex === null ? 0.8 : 0.25}
+                />
+              );
+            }
+          });
+          
+          // Second pass: render selected route last (on top)
+          if (selectedRouteIndex !== null && routes[selectedRouteIndex]) {
+            const route = routes[selectedRouteIndex];
+            polylines.push(
+              <Polyline
+                key={`route-sel-${selectedRouteIndex}`}
+                positions={getRoutePositions(route)}
+                color={getRouteColor(selectedRouteIndex)}
+                weight={6}
+                opacity={1.0}
+              />
+            );
+          }
+          
+          return polylines;
+        })()}
       </MapContainer>
     </div>
   );
