@@ -13,7 +13,7 @@ import logging
 import math
 from datetime import datetime, timedelta, timezone
 
-from models import Coordinates, RouteRequest, WaypointWeather
+from models import Coordinates, RouteRequest, WaypointWeather, BoatType
 from isochrone_router import (
     IsochronePoint, IsochroneState, should_prune_point,
     get_grid_cell, GRID_CELL_SIZE, is_in_directional_cone,
@@ -95,7 +95,7 @@ def test_simple_isochrone_route():
         start=start,
         end=end,
         boat_type=BoatType.SAILBOAT,
-        departure_time=datetime.now(timezone.utc)
+        departure_time=datetime.now(timezone.utc).isoformat()
     )
     
     # Run isochrone algorithm
@@ -132,8 +132,8 @@ def test_beam_reach_isochrone():
     request = RouteRequest(
         start=start,
         end=end,
-        boat_type='sailboat',
-        departure_time=datetime.now(timezone.utc)
+        boat_type=BoatType.SAILBOAT,
+        departure_time=datetime.now(timezone.utc).isoformat()
     )
     
     route = calculate_isochrone_route(
