@@ -39,36 +39,35 @@ def create_mock_weather_grid(start, end, wind_direction=0.0):
     lat_step = (max_lat - min_lat) / 2
     lng_step = (max_lng - min_lng) / 2
     
+    # Create grid points
     grid_points = []
     for i in range(3):
         for j in range(3):
             lat = min_lat + i * lat_step
             lng = min_lng + j * lng_step
-            grid_points.append({
-                'lat': lat,
-                'lng': lng,
-                'time': datetime.now(timezone.utc)
-            })
+            grid_points.append((lat, lng))
     
-    weather_data = []
-    for point in grid_points:
-        for hour in range(24):
-            time = datetime.now(timezone.utc) + timedelta(hours=hour)
-            weather_data.append({
-                'lat': point['lat'],
-                'lng': point['lng'],
-                'time': time,
-                'wind_speed': 15.0,
-                'wind_direction': wind_direction,
-                'wave_height': 1.0,
-                'swell_height': 0.5,
-                'visibility': 10.0,
-                'precipitation': 0.0,
-                'temperature': 20.0
-            })
+    # Create times list
+    base_time = datetime.now(timezone.utc)
+    times = [base_time + timedelta(hours=h) for h in range(24)]
+    
+    # Create weather data dict: (lat, lng, time_index) -> WaypointWeather
+    weather_data = {}
+    for lat, lng in grid_points:
+        for time_idx in range(len(times)):
+            weather_data[(lat, lng, time_idx)] = WaypointWeather(
+                wind_speed=15.0,
+                wind_direction=wind_direction,
+                wave_height=1.0,
+                swell_height=0.5,
+                visibility=10.0,
+                precipitation=0.0,
+                temperature=20.0
+            )
     
     return {
         'grid_points': grid_points,
+        'times': times,
         'weather_data': weather_data,
         'bounds': {
             'min_lat': min_lat,
@@ -210,17 +209,18 @@ def test_directional_cone_all_headings():
 # ============================================================================
 
 def test_heading_180_not_pruned():
-    """Test that heading 180° (directly toward goal) is not pruned"""
+    """Test that heading toward goal is not pruned when boat can actually move"""
     start = Coordinates(lat=50.5, lng=-1.0)
     end = Coordinates(lat=50.0, lng=-1.0)
     
     state = IsochroneState()
     state.closest_distance_to_goal = calculate_distance(start, end)
     
-    # Wind from north (favorable for southbound)
-    wind_direction = 0.0
+    # Wind from SOUTH (180°) - favorable for southbound sailing (tailwind/downwind)
+    # This ensures boat can actually move south
+    wind_direction = 180.0
     wind_speed = 15.0
-    heading = 180
+    heading = 180  # Sailing south toward goal
     
     wind_angle = calculate_wind_angle(heading, wind_direction)
     boat_speed = get_boat_speed(wind_speed, wind_angle, 'sailboat')
@@ -228,9 +228,9 @@ def test_heading_180_not_pruned():
     logger.info(f"Wind direction: {wind_direction}°, Heading: {heading}°, Wind angle: {wind_angle}°")
     logger.info(f"Boat speed at heading {heading}° with {wind_speed}kt wind: {boat_speed}kt")
     
-    # If boat speed is 0, skip this test (might be in no-go zone)
+    # If boat speed is 0, skip this test
     if boat_speed == 0:
-        logger.info("Boat speed is 0 - skipping test (possibly in no-go zone)")
+        logger.info("Boat speed is 0 - test skipped (wind conditions prevent movement)")
         return
     
     # Calculate new position after 1 hour
@@ -254,8 +254,8 @@ def test_heading_180_not_pruned():
     logger.info(f"Progress made: {initial_distance - new_distance_to_goal:.1f}nm closer")
     logger.info(f"Point {'PRUNED' if should_prune else 'KEPT'}")
     
-    assert not should_prune, "Heading directly toward goal should not be pruned"
-    assert new_distance_to_goal < initial_distance, "Should make progress toward goal"
+    assert not should_prune, "Heading toward goal with favorable wind should not be pruned"
+    assert new_distance_to_goal < initial_distance, "Should make progress toward goal with tailwind"
 
 
 def test_heading_makes_progress():
