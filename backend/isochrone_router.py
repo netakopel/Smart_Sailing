@@ -112,7 +112,7 @@ DIRECTIONAL_CONE_ANGLE = 140  # ±140° from direct bearing (280° total)
 DIRECTIONAL_CONE_ANGLE_NEAR_GOAL = 180  # No cone restriction when close to goal
 
 # Distance thresholds for arrival
-ARRIVAL_THRESHOLD_NM = 5.0  # Consider "arrived" within 5nm
+ARRIVAL_THRESHOLD_NM = 5.0  # Consider "arrived" within 5nm (then add final segment)
 
 
 # ============================================================================
@@ -137,24 +137,20 @@ def get_grid_cell(position: Coordinates, cell_size: float) -> Tuple[int, int]:
 
 def get_adaptive_grid_cell_size(distance_to_goal: float, exploration_level: int = 0) -> float:
     """
-    Get grid cell size based on distance to goal and exploration level.
+    Get grid cell size based on exploration level only (NOT distance to goal).
     
-    Larger cells (less aggressive pruning) when far from goal or early in exploration.
-    Smaller cells (more aggressive pruning) when close to goal.
+    Keep grid size constant to avoid over-pruning near the goal.
+    Only use larger cells in very early exploration to allow diverse routes.
     
     Args:
-        distance_to_goal: Distance to destination in nm
+        distance_to_goal: Distance to destination in nm (not used anymore)
         exploration_level: Number of cells visited (for tacking patterns)
     """
     # Very early exploration: use EXTRA large cells to allow tacking patterns to develop
     if exploration_level < 50:
         return GRID_CELL_SIZE * 2.0  # 0.3° = ~18nm
     
-    # Near goal: use fine grid for precision
-    if distance_to_goal < 10:
-        return GRID_CELL_SIZE_NEAR_GOAL
-    
-    # Default
+    # Otherwise use constant grid size everywhere
     return GRID_CELL_SIZE
 
 
@@ -276,35 +272,29 @@ def should_prune_point(
     # Update visited grid with this point (it's the best so far for this cell)
     state.visited_grid[cell] = point.time_hours
     
-    # Strategy 2: Distance-based pruning
+    # Strategy 2: Distance-based pruning (favor points closer to goal)
     # Update closest distance if this is better
     if distance_to_goal < state.closest_distance_to_goal:
         state.closest_distance_to_goal = distance_to_goal
     
-    # Distance-based pruning needs to be VERY lenient for upwind/tacking scenarios
-    # The key insight: tacking routes must go sideways before making progress
+    # Aggressive distance-based pruning that favors progress toward goal
+    # While still allowing tacking patterns in early exploration
     
     # Calculate how much we've explored
     exploration_level = len(state.visited_grid)
     
-    if exploration_level < 50:
-        # Very early: allow routes that go way off course (for tacking patterns)
-        # Only prune if ABSURDLY far (10x the current best distance)
-        if distance_to_goal > state.closest_distance_to_goal * 10.0:
+    if exploration_level < 30:
+        # Very early: allow routes that go off course (for discovering tacking patterns)
+        if distance_to_goal > state.closest_distance_to_goal * 6.0:
             return True
-    elif exploration_level < 150:
-        # Medium exploration: still generous (5x multiplier)
-        if distance_to_goal > state.closest_distance_to_goal * 5.0:
-            return True
-    elif state.closest_distance_to_goal > 30:
-        # Well-explored, far from goal: moderate pruning
+    elif exploration_level < 80:
+        # Early-medium exploration: start favoring progress
         if distance_to_goal > state.closest_distance_to_goal * 3.0:
             return True
-    elif state.closest_distance_to_goal > 10:
-        # Well-explored, medium distance: tighter pruning
-        if distance_to_goal > state.closest_distance_to_goal * 2.5:
+    else:
+        # Well-explored: strongly favor points making progress toward goal
+        if distance_to_goal > state.closest_distance_to_goal * 2.0:
             return True
-    # else: Near goal (<10nm): minimal distance-based pruning, rely on grid pruning
     
     return False
 
@@ -312,7 +302,8 @@ def should_prune_point(
 def reconstruct_path(
     final_point: IsochronePoint,
     start: Coordinates,
-    departure_time: datetime
+    departure_time: datetime,
+    destination: Coordinates = None
 ) -> List[Waypoint]:
     """
     Trace back optimal path from destination to start.
@@ -323,6 +314,7 @@ def reconstruct_path(
         final_point: The point that reached the destination
         start: Starting position (for validation)
         departure_time: Departure time (for waypoint timestamps)
+        destination: Exact destination coordinates (adds final segment if provided)
         
     Returns:
         List of Waypoints from start to destination
@@ -347,6 +339,32 @@ def reconstruct_path(
             estimated_arrival=arrival_time.isoformat(),
             weather=None  # Will be filled in later
         ))
+    
+    # Add final segment to exact destination if we stopped short
+    if destination and len(waypoints) > 0:
+        last_wp = waypoints[-1]
+        distance_to_dest = calculate_distance(
+            Coordinates(lat=last_wp.position.lat, lng=last_wp.position.lng),
+            destination
+        )
+        
+        # If we're not exactly at the destination, add final waypoint
+        if distance_to_dest > 0.1:  # More than 0.1 nm (~185 meters)
+            logger.info(f"Adding final segment: {distance_to_dest:.2f}nm to exact destination")
+            
+            # Estimate time for final segment (conservative 5 knots for short final leg)
+            final_time_hours = final_point.time_hours + (distance_to_dest / 5.0)
+            final_arrival = departure_time + timedelta(hours=final_time_hours)
+            
+            logger.info(f"  Final point time: {final_point.time_hours:.2f}h")
+            logger.info(f"  Added time: {(distance_to_dest / 5.0):.2f}h")
+            logger.info(f"  Total time with final segment: {final_time_hours:.2f}h")
+            
+            waypoints.append(Waypoint(
+                position=Coordinates(lat=destination.lat, lng=destination.lng),
+                estimated_arrival=final_arrival.isoformat(),
+                weather=None  # Will be filled in later
+            ))
     
     return waypoints
 
@@ -491,10 +509,10 @@ def propagate_isochrone(
             if destination_bearing and current_isochrone:
                 logger.debug(f"    Bearing to goal: {destination_bearing:.0f}deg")
     
-    # Safety check: if isochrone is growing too large, apply aggressive pruning
+    # Always favor points closer to goal by sorting and limiting isochrone size
     if len(next_isochrone) > max_size:
-        logger.warning(f"  Isochrone size ({len(next_isochrone)}) exceeds max ({max_size}), applying aggressive pruning")
-        # Sort by distance to goal and keep only the best N points
+        logger.debug(f"  Isochrone size ({len(next_isochrone)}) exceeds max ({max_size}), keeping closest {max_size} points")
+        # Sort by distance to goal and keep only the closest N points
         next_isochrone.sort(key=lambda p: calculate_distance(p.position, destination))
         next_isochrone = next_isochrone[:max_size]
     
@@ -589,12 +607,20 @@ def calculate_isochrone_route(
             logger.info(f"  Distance: {arrival_point.accumulated_distance:.1f} nm")
             logger.info(f"  Iterations: {state.total_iterations}")
             
-            # Reconstruct path
-            waypoints = reconstruct_path(arrival_point, request.start, departure_time)
+            # Reconstruct path (adds final segment to exact destination)
+            waypoints = reconstruct_path(arrival_point, request.start, departure_time, request.end)
             
             # Calculate route statistics
-            total_distance = arrival_point.accumulated_distance
-            total_time_hours = arrival_point.time_hours
+            total_distance = calculate_route_distance([wp.position for wp in waypoints])
+            
+            # Calculate total time (use last waypoint's time)
+            if waypoints:
+                last_arrival = datetime.fromisoformat(waypoints[-1].estimated_arrival)
+                total_time_hours = (last_arrival - departure_time).total_seconds() / 3600
+                logger.info(f"Total time calculation: {total_time_hours:.2f}h ({len(waypoints)} waypoints)")
+            else:
+                total_time_hours = arrival_point.time_hours
+                logger.info(f"Using arrival point time: {total_time_hours:.2f}h")
             
             return GeneratedRoute(
                 name="Isochrone Optimal",
