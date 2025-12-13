@@ -12,10 +12,14 @@ FEATURES:
 """
 
 import requests
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple, Optional
 from models import Coordinates, Waypoint, WaypointWeather
 import math
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 # API endpoints (free, no API key needed!)
@@ -120,7 +124,7 @@ def fetch_weather_for_waypoints(waypoints: List[Waypoint]) -> List[Waypoint]:
     avg_lng = sum(longitudes) / len(longitudes)
     model_name, weather_api_url = select_weather_model(avg_lat, avg_lng)
     
-    print(f"  Fetching weather for {len(waypoints)} waypoints (batched, model: {model_name.upper()})...")
+    logger.warning(f"  Fetching weather for {len(waypoints)} waypoints (batched, model: {model_name.upper()})...")
     
     # Parse arrival times to get dates and hours
     arrival_times = []
@@ -153,9 +157,9 @@ def fetch_weather_for_waypoints(waypoints: List[Waypoint]) -> List[Waypoint]:
         if weather_response.ok:
             weather_data = weather_response.json()
         else:
-            print(f"  Warning: Weather API returned status {weather_response.status_code}")
+            logger.warning(f"  Warning: Weather API returned status {weather_response.status_code}")
     except Exception as e:
-        print(f"  Warning: Weather API call failed: {e}")
+        logger.warning(f"  Warning: Weather API call failed: {e}")
     
     try:
         # Fetch marine data (waves)
@@ -170,9 +174,9 @@ def fetch_weather_for_waypoints(waypoints: List[Waypoint]) -> List[Waypoint]:
         if marine_response.ok:
             marine_data = marine_response.json()
         else:
-            print(f"  Warning: Marine API returned status {marine_response.status_code}")
+            logger.warning(f"  Warning: Marine API returned status {marine_response.status_code}")
     except Exception as e:
-        print(f"  Warning: Marine API call failed: {e}")
+        logger.warning(f"  Warning: Marine API call failed: {e}")
     
     # Process response and create updated waypoints
     updated_waypoints = []
@@ -248,7 +252,7 @@ def _extract_weather_from_single(
             wind_sustained=round(wind_sustained_kt, 1)
         )
     except Exception as e:
-        print(f"  Warning: Failed to extract weather: {e}")
+        logger.warning(f"  Warning: Failed to extract weather: {e}")
         return _get_default_weather()
 
 
@@ -361,7 +365,7 @@ def fetch_regional_weather_grid(
           Formula: forecast_hours = ceil(estimated_route_duration_hours * 1.5)
           The 1.5 multiplier provides buffer for slower-than-expected progress.
     """
-    print(f"  Fetching regional weather grid (spacing: {grid_spacing}nm)...")
+    logger.warning(f"  Fetching regional weather grid (spacing: {grid_spacing}nm)...")
     
     # Calculate bounding box with 0.5° padding (about 30 nautical miles)
     min_lat = min(start.lat, end.lat) - 0.5
@@ -386,7 +390,7 @@ def fetch_regional_weather_grid(
             lng += lng_spacing
         lat += lat_spacing
     
-    print(f"  Grid: {len(grid_points)} points covering {max_lat-min_lat:.2f}° lat × {max_lng-min_lng:.2f}° lng")
+    logger.warning(f"  Grid: {len(grid_points)} points covering {max_lat-min_lat:.2f}° lat × {max_lng-min_lng:.2f}° lng")
     
     # Parse departure time and calculate time range
     # NOTE: forecast_hours should be calculated based on route duration to minimize API calls!
@@ -401,7 +405,7 @@ def fetch_regional_weather_grid(
     
     # Select best weather model based on route location
     model_name, weather_api_url = select_weather_model(avg_lat, (min_lng + max_lng) / 2)
-    print(f"  Using weather model: {model_name.upper()}")
+    logger.warning(f"  Using weather model: {model_name.upper()}")
     
     # Prepare coordinates for batched API call
     # Open-Meteo supports up to 100 locations per request, so we may need multiple calls
@@ -427,7 +431,7 @@ def fetch_regional_weather_grid(
             }, timeout=30)
             
             if not weather_response.ok:
-                print(f"  Warning: Weather API returned status {weather_response.status_code}")
+                logger.warning(f"  Warning: Weather API returned status {weather_response.status_code}")
                 continue
                 
             response_data = weather_response.json()
@@ -464,10 +468,10 @@ def fetch_regional_weather_grid(
                     weather_data[(lat, lng, time_idx)] = weather
                     
         except Exception as e:
-            print(f"  Warning: Failed to fetch weather for grid chunk: {e}")
+            logger.warning(f"  Warning: Failed to fetch weather for grid chunk: {e}")
             continue
     
-    print(f"  [OK] Fetched weather for {len(weather_data)} grid point-time combinations")
+    logger.warning(f"  [OK] Fetched weather for {len(weather_data)} grid point-time combinations")
     
     return {
         'grid_points': grid_points,

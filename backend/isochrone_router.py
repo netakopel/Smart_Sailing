@@ -24,6 +24,7 @@ Based on algorithms used in professional sailing software (OpenCPN, Expedition, 
 """
 
 import math
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional, Set
 from dataclasses import dataclass, field
@@ -35,6 +36,9 @@ from route_generator import (
 )
 from weather_fetcher import fetch_regional_weather_grid, interpolate_weather, calculate_forecast_hours_needed
 from polars import get_boat_speed, calculate_wind_angle, normalize_angle, is_in_no_go_zone
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -470,26 +474,26 @@ def propagate_isochrone(
     
     # Debug output if isochrone is empty or very small
     if len(next_isochrone) <= 2:
-        print(f"  [DEBUG] Propagation stats:")
-        print(f"    Headings tried: {debug_counters['total_headings_tried']}")
-        print(f"    Skipped (cone): {debug_counters['skipped_cone']}")
-        print(f"    Skipped (no-go): {debug_counters['skipped_no_go']}")
-        print(f"    Skipped (zero speed): {debug_counters['skipped_zero_speed']}")
-        print(f"    Pruned: {debug_counters['pruned']}")
-        print(f"    Added: {debug_counters['added']}")
+        logger.debug(f"  Propagation stats:")
+        logger.debug(f"    Headings tried: {debug_counters['total_headings_tried']}")
+        logger.debug(f"    Skipped (cone): {debug_counters['skipped_cone']}")
+        logger.debug(f"    Skipped (no-go): {debug_counters['skipped_no_go']}")
+        logger.debug(f"    Skipped (zero speed): {debug_counters['skipped_zero_speed']}")
+        logger.debug(f"    Pruned: {debug_counters['pruned']}")
+        logger.debug(f"    Added: {debug_counters['added']}")
         if 'speeds' in debug_counters and debug_counters['speeds']:
             speeds_sample = debug_counters['speeds']
-            print(f"    Sample speeds (first {len(speeds_sample)} valid headings):")
+            logger.debug(f"    Sample speeds (first {len(speeds_sample)} valid headings):")
             for hdg, wa, spd in speeds_sample:
-                print(f"      {hdg}deg wind@{wa:.0f}deg = {spd:.1f}kt")
+                logger.debug(f"      {hdg}deg wind@{wa:.0f}deg = {spd:.1f}kt")
             # Check if we tried heading toward goal
             destination_bearing = calculate_bearing(current_isochrone[0].position if current_isochrone else None, destination)
             if destination_bearing and current_isochrone:
-                print(f"    Bearing to goal: {destination_bearing:.0f}deg")
+                logger.debug(f"    Bearing to goal: {destination_bearing:.0f}deg")
     
     # Safety check: if isochrone is growing too large, apply aggressive pruning
     if len(next_isochrone) > max_size:
-        print(f"  [WARNING] Isochrone size ({len(next_isochrone)}) exceeds max ({max_size}), applying aggressive pruning")
+        logger.warning(f"  Isochrone size ({len(next_isochrone)}) exceeds max ({max_size}), applying aggressive pruning")
         # Sort by distance to goal and keep only the best N points
         next_isochrone.sort(key=lambda p: calculate_distance(p.position, destination))
         next_isochrone = next_isochrone[:max_size]
@@ -546,10 +550,10 @@ def calculate_isochrone_route(
     Returns:
         GeneratedRoute with optimal path, or None if no route found
     """
-    print(f"\n=== Starting Isochrone Route Calculation ===")
-    print(f"Start: ({request.start.lat:.3f}, {request.start.lng:.3f})")
-    print(f"End: ({request.end.lat:.3f}, {request.end.lng:.3f})")
-    print(f"Boat: {request.boat_type.value}")
+    logger.info("=== Starting Isochrone Route Calculation ===")
+    logger.info(f"Start: ({request.start.lat:.3f}, {request.start.lng:.3f})")
+    logger.info(f"End: ({request.end.lat:.3f}, {request.end.lng:.3f})")
+    logger.info(f"Boat: {request.boat_type.value}")
     
     # Parse departure time
     departure_time = datetime.fromisoformat(request.departure_time.replace('Z', '+00:00'))
@@ -570,7 +574,7 @@ def calculate_isochrone_route(
     state.current_isochrone = [start_point]
     state.closest_distance_to_goal = calculate_distance(request.start, request.end)
     
-    print(f"Initial distance to goal: {state.closest_distance_to_goal:.1f} nm")
+    logger.info(f"Initial distance to goal: {state.closest_distance_to_goal:.1f} nm")
     
     # Propagate forward in time until we reach destination or timeout
     current_time_hours = 0.0
@@ -580,10 +584,10 @@ def calculate_isochrone_route(
         arrival_point = find_arrival_point(state.current_isochrone, request.end)
         
         if arrival_point is not None:
-            print(f"\n[SUCCESS] Destination reached!")
-            print(f"  Time: {arrival_point.time_hours:.2f} hours")
-            print(f"  Distance: {arrival_point.accumulated_distance:.1f} nm")
-            print(f"  Iterations: {state.total_iterations}")
+            logger.info("[SUCCESS] Destination reached!")
+            logger.info(f"  Time: {arrival_point.time_hours:.2f} hours")
+            logger.info(f"  Distance: {arrival_point.accumulated_distance:.1f} nm")
+            logger.info(f"  Iterations: {state.total_iterations}")
             
             # Reconstruct path
             waypoints = reconstruct_path(arrival_point, request.start, departure_time)
@@ -605,7 +609,7 @@ def calculate_isochrone_route(
         distance_to_goal = state.closest_distance_to_goal
         time_step = get_adaptive_time_step(distance_to_goal)
         
-        print(f"\nTime: {current_time_hours:.1f}h | Isochrone: {len(state.current_isochrone)} pts | Closest: {distance_to_goal:.1f}nm | Step: {time_step:.1f}h | Visited cells: {len(state.visited_grid)}")
+        logger.info(f"Time: {current_time_hours:.1f}h | Isochrone: {len(state.current_isochrone)} pts | Closest: {distance_to_goal:.1f}nm | Step: {time_step:.1f}h | Visited cells: {len(state.visited_grid)}")
         
         # Propagate isochrone forward
         state.current_isochrone = propagate_isochrone(
@@ -620,13 +624,13 @@ def calculate_isochrone_route(
         
         # Check if isochrone is empty (no reachable points - shouldn't happen)
         if not state.current_isochrone:
-            print(f"\n[FAILED] Isochrone became empty - no valid paths forward")
+            logger.error("[FAILED] Isochrone became empty - no valid paths forward")
             return None
         
         current_time_hours += time_step
     
-    print(f"\n[TIMEOUT] Reached {max_time_hours} hours without finding destination")
-    print(f"  Closest approach: {state.closest_distance_to_goal:.1f} nm")
+    logger.warning(f"[TIMEOUT] Reached {max_time_hours} hours without finding destination")
+    logger.warning(f"  Closest approach: {state.closest_distance_to_goal:.1f} nm")
     
     return None
 
@@ -650,16 +654,16 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
     Returns:
         List of GeneratedRoute objects (1-3 routes)
     """
-    print(f"\n{'='*60}")
-    print(f"ISOCHRONE ROUTE GENERATION")
-    print(f"{'='*60}")
+    logger.info("="*60)
+    logger.info("ISOCHRONE ROUTE GENERATION")
+    logger.info("="*60)
     
     # Calculate route bounds and fetch weather grid
     direct_distance = calculate_distance(request.start, request.end)
     forecast_hours = calculate_forecast_hours_needed(direct_distance, avg_boat_speed=6.0)
     
-    print(f"\nFetching weather grid...")
-    print(f"  Forecast hours: {forecast_hours}")
+    logger.info("Fetching weather grid...")
+    logger.info(f"  Forecast hours: {forecast_hours}")
     
     weather_grid = fetch_regional_weather_grid(
         start=request.start,
@@ -669,18 +673,18 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
         forecast_hours=forecast_hours
     )
     
-    print(f"  Grid points: {len(weather_grid.get('grid_points', []))}")
+    logger.info(f"  Grid points: {len(weather_grid.get('grid_points', []))}")
     
     # Check if we have weather data
     if not weather_grid.get('grid_points') or not weather_grid.get('weather_data'):
-        print("\n[ERROR] No weather data available - cannot calculate route")
+        logger.error("No weather data available - cannot calculate route")
         return []
     
     # Calculate primary route (fastest)
     primary_route = calculate_isochrone_route(request, weather_grid)
     
     if primary_route is None:
-        print("\n[FAILED] No valid route found")
+        logger.warning("No valid route found")
         return []
     
     routes = [primary_route]
@@ -689,9 +693,9 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
     # For now, just return the optimal route
     # Future enhancement: modify algorithm to prioritize different objectives
     
-    print(f"\n{'='*60}")
-    print(f"Generated {len(routes)} isochrone route(s)")
-    print(f"{'='*60}\n")
+    logger.info("="*60)
+    logger.info(f"Generated {len(routes)} isochrone route(s)")
+    logger.info("="*60)
     
     return routes
 
@@ -701,8 +705,8 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
 # ============================================================================
 
 if __name__ == "__main__":
-    print("Isochrone Router - Test Mode")
-    print("=" * 60)
+    logger.info("Isochrone Router - Test Mode")
+    logger.info("=" * 60)
     
     # Test case: Southampton to Cherbourg (classic sailing route)
     from models import RouteRequest, Coordinates, BoatType
@@ -714,18 +718,18 @@ if __name__ == "__main__":
         departure_time="2024-01-15T08:00:00Z"
     )
     
-    print("\nTest Route: Southampton -> Cherbourg")
-    print(f"Distance: {calculate_distance(test_request.start, test_request.end):.1f} nm")
+    logger.info("Test Route: Southampton -> Cherbourg")
+    logger.info(f"Distance: {calculate_distance(test_request.start, test_request.end):.1f} nm")
     
     routes = generate_isochrone_routes(test_request)
     
     if routes:
-        print(f"\n[SUCCESS] Generated {len(routes)} route(s)")
+        logger.info(f"[SUCCESS] Generated {len(routes)} route(s)")
         for i, route in enumerate(routes, 1):
-            print(f"\nRoute {i}: {route.name}")
-            print(f"  Distance: {route.total_distance:.1f} nm")
-            print(f"  Time: {route.estimated_hours:.1f} hours")
-            print(f"  Waypoints: {len(route.waypoints)}")
+            logger.info(f"Route {i}: {route.name}")
+            logger.info(f"  Distance: {route.total_distance:.1f} nm")
+            logger.info(f"  Time: {route.estimated_hours:.1f} hours")
+            logger.info(f"  Waypoints: {len(route.waypoints)}")
     else:
-        print("\n[FAILED] No routes generated")
+        logger.error("[FAILED] No routes generated")
 

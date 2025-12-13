@@ -8,6 +8,7 @@ Scoring is based on:
 - Distance efficiency
 """
 
+import logging
 from typing import List, Tuple
 from models import (
     Waypoint, Route, BoatProfile, BoatType, 
@@ -16,6 +17,9 @@ from models import (
 from route_generator import GeneratedRoute, calculate_bearing
 from weather_fetcher import summarize_weather
 from polars import is_in_no_go_zone, calculate_wind_angle as calculate_wind_angle_polar
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 # NOTE: Using calculate_wind_angle from polars.py instead
@@ -289,10 +293,10 @@ def score_route(
         no_go_penalty = 0  # No penalty for routes with few no-go waypoints
     
     # Apply penalties
-    print(f"   [SCORING] Base score: {final_score}, No-go waypoints: {no_go_waypoints}, No-go penalty: {no_go_penalty}, Danger penalty: {danger_penalty}")
+    logger.debug(f"   [SCORING] Base score: {final_score}, No-go waypoints: {no_go_waypoints}, No-go penalty: {no_go_penalty}, Danger penalty: {danger_penalty}")
     final_score -= no_go_penalty
     final_score -= danger_penalty
-    print(f"   [SCORING] Final score after penalties: {final_score}")
+    logger.debug(f"   [SCORING] Final score after penalties: {final_score}")
     
     # Add warning if route has many no-go zone waypoints
     if no_go_waypoints > 5:

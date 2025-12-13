@@ -13,8 +13,12 @@ Key Concepts:
 """
 
 import math
+import logging
 from typing import Dict, Tuple, Optional
 from enum import Enum
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class BoatType(str, Enum):
@@ -633,55 +637,58 @@ def is_in_no_go_zone(wind_angle: float, boat_type: str) -> bool:
 # ============================================================================
 
 if __name__ == "__main__":
+    # Set up logging for tests
+    logging.basicConfig(level=logging.INFO)
+    
     # Test basic polar lookups
-    print("=== Polar Diagram Tests ===\n")
+    logger.info("=== Polar Diagram Tests ===")
     
-    print("Test 1: Exact lookup - Sailboat, 10 knots, 90° (beam reach)")
+    logger.info("Test 1: Exact lookup - Sailboat, 10 knots, 90° (beam reach)")
     speed = get_boat_speed(10, 90, "sailboat")
-    print(f"  Result: {speed:.1f} knots (expected: 7.2)\n")
+    logger.info(f"  Result: {speed:.1f} knots (expected: 7.2)")
     
-    print("Test 2: No-go zone - Sailboat, 10 knots, 30°")
+    logger.info("Test 2: No-go zone - Sailboat, 10 knots, 30°")
     speed = get_boat_speed(10, 30, "sailboat")
-    print(f"  Result: {speed:.1f} knots (expected: 0.0)\n")
+    logger.info(f"  Result: {speed:.1f} knots (expected: 0.0)")
     
-    print("Test 3: Interpolation - Sailboat, 12 knots, 95°")
+    logger.info("Test 3: Interpolation - Sailboat, 12 knots, 95°")
     speed = get_boat_speed(12, 95, "sailboat")
-    print(f"  Result: {speed:.1f} knots (expected: ~7.5-8.0)\n")
+    logger.info(f"  Result: {speed:.1f} knots (expected: ~7.5-8.0)")
     
-    print("Test 4: Catamaran speed - 15 knots, 110° (broad reach)")
+    logger.info("Test 4: Catamaran speed - 15 knots, 110° (broad reach)")
     speed = get_boat_speed(15, 110, "catamaran")
-    print(f"  Result: {speed:.1f} knots (expected: 16.0)\n")
+    logger.info(f"  Result: {speed:.1f} knots (expected: 16.0)")
     
-    print("Test 5: Motorboat - 15 knots wind, any angle")
+    logger.info("Test 5: Motorboat - 15 knots wind, any angle")
     speed_upwind = get_boat_speed(15, 0, "motorboat")
     speed_downwind = get_boat_speed(15, 180, "motorboat")
-    print(f"  Upwind: {speed_upwind:.1f} knots")
-    print(f"  Downwind: {speed_downwind:.1f} knots")
-    print(f"  (Motorboat less affected by wind angle)\n")
+    logger.info(f"  Upwind: {speed_upwind:.1f} knots")
+    logger.info(f"  Downwind: {speed_downwind:.1f} knots")
+    logger.info(f"  (Motorboat less affected by wind angle)")
     
-    print("Test 6: VMG optimization - Destination North, Wind from North")
+    logger.info("Test 6: VMG optimization - Destination North, Wind from North")
     optimal_heading, max_vmg = get_optimal_vmg_angle(
         wind_speed=15,
         boat_type="sailboat",
         destination_bearing=0,   # North
         wind_direction=0         # Wind from North
     )
-    print(f"  Cannot sail directly upwind (in no-go zone)")
-    print(f"  Optimal heading: {optimal_heading}°")
-    print(f"  VMG: {max_vmg:.2f} knots")
-    print(f"  (Should be around 50-52° or 308-310° with VMG ~5-6 knots)\n")
+    logger.info(f"  Cannot sail directly upwind (in no-go zone)")
+    logger.info(f"  Optimal heading: {optimal_heading}°")
+    logger.info(f"  VMG: {max_vmg:.2f} knots")
+    logger.info(f"  (Should be around 50-52° or 308-310° with VMG ~5-6 knots)")
     
-    print("Test 7: VMG optimization - Destination North, Wind from East")
+    logger.info("Test 7: VMG optimization - Destination North, Wind from East")
     optimal_heading, max_vmg = get_optimal_vmg_angle(
         wind_speed=15,
         boat_type="sailboat",
         destination_bearing=0,   # North
         wind_direction=90        # Wind from East
     )
-    print(f"  Beam reach - good conditions")
-    print(f"  Optimal heading: {optimal_heading}°")
-    print(f"  VMG: {max_vmg:.2f} knots")
-    print(f"  (Should be close to 0° with excellent VMG ~9-10 knots)\n")
+    logger.info(f"  Beam reach - good conditions")
+    logger.info(f"  Optimal heading: {optimal_heading}°")
+    logger.info(f"  VMG: {max_vmg:.2f} knots")
+    logger.info(f"  (Should be close to 0° with excellent VMG ~9-10 knots)")
     
-    print("=== All tests complete ===")
+    logger.info("=== All tests complete ===")
 

@@ -2,6 +2,7 @@
 Debug script to understand pruning behavior
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from models import RouteRequest, Coordinates, BoatType, WaypointWeather
 from isochrone_router import (
@@ -9,6 +10,10 @@ from isochrone_router import (
     should_prune_point, get_grid_cell, GRID_CELL_SIZE
 )
 from route_generator import calculate_distance
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create simple mock weather grid
 def create_mock_weather_grid(start, end, wind_direction=0.0):
@@ -58,25 +63,25 @@ def create_mock_weather_grid(start, end, wind_direction=0.0):
     }
 
 
-print("="*70)
-print("PRUNING LOGIC DEBUG")
-print("="*70)
+logger.info("="*70)
+logger.info("PRUNING LOGIC DEBUG")
+logger.info("="*70)
 
 # Test scenario: upwind (headwind)
 start = Coordinates(lat=50.5, lng=-1.0)
 end = Coordinates(lat=50.0, lng=-1.0)
 
-print(f"\nScenario: Sailing SOUTH (upwind)")
-print(f"Start: {start.lat}N, {start.lng}E")
-print(f"End:   {end.lat}N, {end.lng}E")
-print(f"Distance: {calculate_distance(start, end):.1f}nm")
-print(f"Wind: 15kt from NORTH (directly against us)")
-print()
+logger.info(f"\nScenario: Sailing SOUTH (upwind)")
+logger.info(f"Start: {start.lat}N, {start.lng}E")
+logger.info(f"End:   {end.lat}N, {end.lng}E")
+logger.info(f"Distance: {calculate_distance(start, end):.1f}nm")
+logger.info(f"Wind: 15kt from NORTH (directly against us)")
+logger.info()
 
 # Simulate what happens after first propagation
-print("-"*70)
-print("SIMULATION: After 1 hour of sailing")
-print("-"*70)
+logger.info("-"*70)
+logger.info("SIMULATION: After 1 hour of sailing")
+logger.info("-"*70)
 
 # Create sample points from different headings
 state = IsochroneState()
@@ -91,28 +96,28 @@ sample_points = [
     IsochronePoint(Coordinates(lat=50.4, lng=-1.0), time_hours=1.0, accumulated_distance=7.0),  # S
 ]
 
-print(f"\n5 points reached after 1 hour:")
+logger.info(f"\n5 points reached after 1 hour:")
 for i, pt in enumerate(sample_points, 1):
     dist = calculate_distance(pt.position, end)
     cell = get_grid_cell(pt.position, GRID_CELL_SIZE)
-    print(f"  Point {i}: ({pt.position.lat:.2f}, {pt.position.lng:.2f}) "
+    logger.info(f"  Point {i}: ({pt.position.lat:.2f}, {pt.position.lng:.2f}) "
           f"= {dist:.1f}nm from goal, cell={cell}")
     
     # Add to visited grid
     state.visited_grid[cell] = pt.time_hours
 
-print(f"\nVisited grid now has {len(state.visited_grid)} cells")
-print(f"Closest to goal: {state.closest_distance_to_goal:.1f}nm")
+logger.info(f"\nVisited grid now has {len(state.visited_grid)} cells")
+logger.info(f"Closest to goal: {state.closest_distance_to_goal:.1f}nm")
 
 # Now simulate propagating from ONE of these points
-print("\n" + "-"*70)
-print("SIMULATION: Propagating from Point 5 (the southern one)")
-print("-"*70)
+logger.info("\n" + "-"*70)
+logger.info("SIMULATION: Propagating from Point 5 (the southern one)")
+logger.info("-"*70)
 
 current_point = sample_points[4]  # The southern point at 50.4N
-print(f"Current position: ({current_point.position.lat:.2f}, {current_point.position.lng:.2f})")
-print(f"Current time: {current_point.time_hours:.1f}h")
-print()
+logger.info(f"Current position: ({current_point.position.lat:.2f}, {current_point.position.lng:.2f})")
+logger.info(f"Current time: {current_point.time_hours:.1f}h")
+logger.info()
 
 # Try a few sample headings
 test_headings = [
@@ -141,26 +146,26 @@ for heading, description in test_headings:
     dist_to_goal = calculate_distance(new_point.position, end)
     cell = get_grid_cell(new_point.position, GRID_CELL_SIZE)
     
-    print(f"\nHeading {heading}deg ({description}):")
-    print(f"  New position: ({new_lat:.2f}, {new_lng:.2f})")
-    print(f"  Distance to goal: {dist_to_goal:.1f}nm")
-    print(f"  Grid cell: {cell}")
-    print(f"  Cell in visited_grid? {cell in state.visited_grid}")
+    logger.info(f"\nHeading {heading}deg ({description}):")
+    logger.info(f"  New position: ({new_lat:.2f}, {new_lng:.2f})")
+    logger.info(f"  Distance to goal: {dist_to_goal:.1f}nm")
+    logger.info(f"  Grid cell: {cell}")
+    logger.info(f"  Cell in visited_grid? {cell in state.visited_grid}")
     
     if cell in state.visited_grid:
         prev_time = state.visited_grid[cell]
-        print(f"  Previous best time to this cell: {prev_time:.1f}h")
-        print(f"  Current time: {new_point.time_hours:.1f}h")
-        print(f"  Is current slower? {new_point.time_hours} > {prev_time * 1.1:.2f}? {new_point.time_hours > prev_time * 1.1}")
+        logger.info(f"  Previous best time to this cell: {prev_time:.1f}h")
+        logger.info(f"  Current time: {new_point.time_hours:.1f}h")
+        logger.info(f"  Is current slower? {new_point.time_hours} > {prev_time * 1.1:.2f}? {new_point.time_hours > prev_time * 1.1}")
     
     # Test pruning
     should_prune = should_prune_point(new_point, state, end)
-    print(f"  => PRUNED? {should_prune}")
+    logger.info(f"  => PRUNED? {should_prune}")
 
-print("\n" + "="*70)
-print("DIAGNOSIS")
-print("="*70)
-print("""
+logger.info("\n" + "="*70)
+logger.info("DIAGNOSIS")
+logger.info("="*70)
+logger.info("""
 The problem: Points we're trying to explore have ALREADY been visited
 by other branches at an earlier time, so they get pruned as "slower".
 

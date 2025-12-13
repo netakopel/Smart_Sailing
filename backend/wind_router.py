@@ -15,6 +15,7 @@ Algorithm:
 """
 
 import math
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple
 from enum import Enum
@@ -26,6 +27,9 @@ from route_generator import (
 )
 from weather_fetcher import fetch_regional_weather_grid, interpolate_weather, calculate_forecast_hours_needed
 from polars import get_boat_speed, calculate_wind_angle, get_optimal_vmg_angle, normalize_angle
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -760,10 +764,10 @@ def generate_hybrid_routes(request: RouteRequest) -> List[GeneratedRoute]:
         
     Performance Target: < 1 second
     """
-    print("\n=== Hybrid Pattern-Based Routing ===")
-    print(f"  Start: ({request.start.lat:.4f}, {request.start.lng:.4f})")
-    print(f"  End: ({request.end.lat:.4f}, {request.end.lng:.4f})")
-    print(f"  Boat: {request.boat_type.value}")
+    logger.info("=== Hybrid Pattern-Based Routing ===")
+    logger.info(f"  Start: ({request.start.lat:.4f}, {request.start.lng:.4f})")
+    logger.info(f"  End: ({request.end.lat:.4f}, {request.end.lng:.4f})")
+    logger.info(f"  Boat: {request.boat_type.value}")
     
     # Calculate route metrics
     total_distance = calculate_distance(request.start, request.end)
@@ -771,8 +775,8 @@ def generate_hybrid_routes(request: RouteRequest) -> List[GeneratedRoute]:
     
     # Calculate how many hours of forecast we need
     forecast_hours = calculate_forecast_hours_needed(total_distance, boat_profile.avg_speed)
-    print(f"  Distance: {total_distance:.1f} nm")
-    print(f"  Forecast hours needed: {forecast_hours}")
+    logger.info(f"  Distance: {total_distance:.1f} nm")
+    logger.info(f"  Forecast hours needed: {forecast_hours}")
     
     # Step 1: Fetch regional weather grid
     weather_grid = fetch_regional_weather_grid(
@@ -784,11 +788,11 @@ def generate_hybrid_routes(request: RouteRequest) -> List[GeneratedRoute]:
     )
     
     # Step 2: Analyze wind corridor
-    print("  Analyzing wind corridor...")
+    logger.info("  Analyzing wind corridor...")
     wind_analysis = analyze_wind_corridor(request.start, request.end, weather_grid)
-    print(f"  Avg wind: {wind_analysis['avg_wind_speed']} kt from {wind_analysis['avg_wind_direction']}°")
-    print(f"  Wind range: {wind_analysis['min_wind_speed']}-{wind_analysis['max_wind_speed']} kt")
-    print(f"  Wind variability: {wind_analysis['wind_variability']}° (0=steady, >30=variable)")
+    logger.info(f"  Avg wind: {wind_analysis['avg_wind_speed']} kt from {wind_analysis['avg_wind_direction']}°")
+    logger.info(f"  Wind range: {wind_analysis['min_wind_speed']}-{wind_analysis['max_wind_speed']} kt")
+    logger.info(f"  Wind variability: {wind_analysis['wind_variability']}° (0=steady, >30=variable)")
     
     # Step 3: Classify sailing scenario
     scenario = classify_sailing_scenario(
@@ -796,22 +800,22 @@ def generate_hybrid_routes(request: RouteRequest) -> List[GeneratedRoute]:
         request.end,
         wind_analysis['avg_wind_direction']
     )
-    print(f"  Sailing scenario: {scenario.value.upper()}")
+    logger.info(f"  Sailing scenario: {scenario.value.upper()}")
     
     # Step 4: Generate routes based on scenario
     if scenario == SailingScenario.UPWIND:
-        print("  Generating tacking routes (upwind scenario)...")
+        logger.info("  Generating tacking routes (upwind scenario)...")
         routes = generate_upwind_routes(request, weather_grid, wind_analysis)
     elif scenario == SailingScenario.DOWNWIND:
-        print("  Generating broad reach routes (downwind scenario)...")
+        logger.info("  Generating broad reach routes (downwind scenario)...")
         routes = generate_downwind_routes(request, weather_grid, wind_analysis)
     else:  # BEAM_REACH or BROAD_REACH
-        print("  Generating reaching routes (fast sailing scenario)...")
+        logger.info("  Generating reaching routes (fast sailing scenario)...")
         routes = generate_reaching_routes(request, weather_grid, wind_analysis)
     
-    print(f"  [OK] Generated {len(routes)} hybrid routes")
+    logger.info(f"  [OK] Generated {len(routes)} hybrid routes")
     for route in routes:
-        print(f"    - {route.name}: {route.distance} nm, {route.estimated_time}")
+        logger.info(f"    - {route.name}: {route.distance} nm, {route.estimated_time}")
     
     return routes
 
@@ -823,10 +827,11 @@ def generate_hybrid_routes(request: RouteRequest) -> List[GeneratedRoute]:
 if __name__ == "__main__":
     from models import BoatType
     
-    print("=== Wind Router Test ===\n")
+    logging.basicConfig(level=logging.INFO)
+    logger.info("=== Wind Router Test ===")
     
     # Test scenario classification
-    print("Test 1: Scenario Classification")
+    logger.info("Test 1: Scenario Classification")
     start = Coordinates(lat=50.0, lng=-1.0)
     end = Coordinates(lat=51.0, lng=-1.0)  # Due north
     
@@ -839,7 +844,7 @@ if __name__ == "__main__":
     
     for wind_dir, description in scenarios_to_test:
         scenario = classify_sailing_scenario(start, end, wind_dir)
-        print(f"  Wind from {wind_dir}°: {scenario.value} - {description}")
+        logger.info(f"  Wind from {wind_dir}°: {scenario.value} - {description}")
     
-    print("\n=== Tests Complete ===")
+    logger.info("=== Tests Complete ===")
 

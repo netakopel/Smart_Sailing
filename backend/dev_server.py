@@ -13,6 +13,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime
 import traceback
+import logging
 
 from models import RouteRequest, Coordinates, BoatType, BOAT_PROFILES
 from wind_router import generate_hybrid_routes
@@ -20,6 +21,13 @@ from isochrone_router import generate_isochrone_routes
 from weather_fetcher import fetch_weather_for_waypoints
 from route_scorer import score_route
 from route_generator import calculate_distance, generate_routes
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for local development
@@ -99,66 +107,66 @@ def calculate_routes():
             departure_time=body["departure_time"]
         )
         
-        print(f"\n=== Calculating Routes ===")
-        print(f"Algorithm: {algorithm.upper()}")
-        print(f"From: ({route_request.start.lat:.4f}, {route_request.start.lng:.4f})")
-        print(f"To: ({route_request.end.lat:.4f}, {route_request.end.lng:.4f})")
-        print(f"Boat: {route_request.boat_type.value}")
+        logger.info("=== Calculating Routes ===")
+        logger.info(f"Algorithm: {algorithm.upper()}")
+        logger.info(f"From: ({route_request.start.lat:.4f}, {route_request.start.lng:.4f})")
+        logger.info(f"To: ({route_request.end.lat:.4f}, {route_request.end.lng:.4f})")
+        logger.info(f"Boat: {route_request.boat_type.value}")
         
         # Step 1: Generate routes based on selected algorithm
-        print(f"\n[1] Generating routes ({algorithm})...")
+        logger.info(f"[1] Generating routes ({algorithm})...")
         generated_routes = []
         
         if algorithm == "naive":
             # Simple geometric routes
             generated_routes = generate_routes(route_request)
-            print(f"   Generated {len(generated_routes)} naive routes")
+            logger.info(f"   Generated {len(generated_routes)} naive routes")
             
         elif algorithm == "hybrid":
             # Pattern-based wind routing
             generated_routes = generate_hybrid_routes(route_request)
-            print(f"   Generated {len(generated_routes)} hybrid routes")
+            logger.info(f"   Generated {len(generated_routes)} hybrid routes")
             
         elif algorithm == "isochrone":
             # Optimal isochrone algorithm
             try:
                 generated_routes = generate_isochrone_routes(route_request)
-                print(f"   Generated {len(generated_routes)} isochrone routes")
+                logger.info(f"   Generated {len(generated_routes)} isochrone routes")
                 if not generated_routes:
-                    print("   WARNING: Isochrone algorithm returned 0 routes!")
+                    logger.warning("   Isochrone algorithm returned 0 routes!")
             except Exception as e:
-                print(f"   ERROR in isochrone algorithm: {e}")
+                logger.error(f"   ERROR in isochrone algorithm: {e}")
                 traceback.print_exc()
                 # Fallback to naive routes if isochrone fails
-                print("   Falling back to naive routes...")
+                logger.info("   Falling back to naive routes...")
                 generated_routes = generate_routes(route_request)
             
         elif algorithm == "all":
             # Run all algorithms and combine results
-            print("   Running ALL algorithms...")
+            logger.info("   Running ALL algorithms...")
             
             # Run naive routes
             try:
                 naive = generate_routes(route_request)
-                print(f"   - Naive: {len(naive)} routes")
+                logger.info(f"   - Naive: {len(naive)} routes")
             except Exception as e:
-                print(f"   - Naive: FAILED ({e})")
+                logger.error(f"   - Naive: FAILED ({e})")
                 naive = []
             
             # Run hybrid routes
             try:
                 hybrid = generate_hybrid_routes(route_request)
-                print(f"   - Hybrid: {len(hybrid)} routes")
+                logger.info(f"   - Hybrid: {len(hybrid)} routes")
             except Exception as e:
-                print(f"   - Hybrid: FAILED ({e})")
+                logger.error(f"   - Hybrid: FAILED ({e})")
                 hybrid = []
             
             # Run isochrone routes
             try:
                 isochrone = generate_isochrone_routes(route_request)
-                print(f"   - Isochrone: {len(isochrone)} routes")
+                logger.info(f"   - Isochrone: {len(isochrone)} routes")
             except Exception as e:
-                print(f"   - Isochrone: FAILED ({e})")
+                logger.error(f"   - Isochrone: FAILED ({e})")
                 isochrone = []
             
             # Rename routes to show which algorithm generated them
@@ -170,7 +178,7 @@ def calculate_routes():
                 r.name = f"[Isochrone] {r.name}"
             
             generated_routes = naive + hybrid + isochrone
-            print(f"   Total: {len(generated_routes)} routes")
+            logger.info(f"   Total: {len(generated_routes)} routes")
         else:
             return jsonify({"error": f"Unknown algorithm: {algorithm}"}), 400
         
@@ -178,15 +186,15 @@ def calculate_routes():
         
         # Check if we have any routes
         if not generated_routes:
-            print("\n[ERROR] No routes generated!")
+            logger.error("No routes generated!")
             return jsonify({"error": "No valid routes found"}), 500
         
         # Step 2: Fetch weather for each route (waypoints already have timing, just need weather data)
-        print("\n[2] Fetching weather for waypoints...")
+        logger.info("[2] Fetching weather for waypoints...")
         boat = BOAT_PROFILES[route_request.boat_type]
         routes_with_weather = []
         for route in generated_routes:
-            print(f"   {route.name}: {len(route.waypoints)} waypoints...")
+            logger.info(f"   {route.name}: {len(route.waypoints)} waypoints...")
             waypoints_with_weather = fetch_weather_for_waypoints(route.waypoints)
             
             # Check for no-go zones and dangerous conditions
@@ -204,49 +212,49 @@ def calculate_routes():
                         
                         if is_in_no_go_zone(wind_angle, boat.boat_type.value):
                             no_go_count += 1
-                            print(f"      [NO-GO] Wind angle: {wind_angle:.0f}° (sailing into wind!)")
+                            logger.warning(f"      [NO-GO] Wind angle: {wind_angle:.0f}° (sailing into wind!)")
                     
                     # Check dangerous conditions
                     if wp.weather.wind_speed > boat.max_safe_wind_speed:
                         dangerous_count += 1
-                        print(f"      [DANGER] Wind: {wp.weather.wind_speed:.1f}kt (limit: {boat.max_safe_wind_speed}kt)")
+                        logger.warning(f"      [DANGER] Wind: {wp.weather.wind_speed:.1f}kt (limit: {boat.max_safe_wind_speed}kt)")
                     if wp.weather.wave_height > boat.max_safe_wave_height:
                         dangerous_count += 1
-                        print(f"      [DANGER] Waves: {wp.weather.wave_height:.1f}m (limit: {boat.max_safe_wave_height}m)")
+                        logger.warning(f"      [DANGER] Waves: {wp.weather.wave_height:.1f}m (limit: {boat.max_safe_wave_height}m)")
             
             if no_go_count > 0:
-                print(f"      >>> {no_go_count} NO-GO ZONE waypoint(s) detected!")
+                logger.warning(f"      >>> {no_go_count} NO-GO ZONE waypoint(s) detected!")
             if dangerous_count > 0:
-                print(f"      >>> {dangerous_count} DANGEROUS condition(s) detected!")
+                logger.warning(f"      >>> {dangerous_count} DANGEROUS condition(s) detected!")
             
             route.waypoints = waypoints_with_weather
             routes_with_weather.append(route)
         
         # Step 3: Score each route
-        print("\n[3] Scoring routes...")
+        logger.info("[3] Scoring routes...")
         scored_routes = []
         for route in routes_with_weather:
             scored = score_route(route, route_request.boat_type, direct_distance)
             danger_indicator = " [DANGER!]" if any("DANGER" in w for w in scored.warnings) else ""
-            print(f"   {scored.name}: {scored.score}/100{danger_indicator}")
+            logger.info(f"   {scored.name}: {scored.score}/100{danger_indicator}")
             if danger_indicator:
                 danger_warnings = [w for w in scored.warnings if 'DANGER' in w]
                 if danger_warnings:
-                    print(f"      -> {danger_warnings[0]}")
+                    logger.warning(f"      -> {danger_warnings[0]}")
             scored_routes.append(scored)
         
         # Sort by score (highest first)
         scored_routes.sort(key=lambda r: r.score, reverse=True)
         
         # Show ALL scores
-        print(f"\n[ALL ROUTES RANKED]:")
+        logger.info("[ALL ROUTES RANKED]:")
         for i, route in enumerate(scored_routes, 1):
-            print(f"   #{i}: {route.name} - {route.score}/100")
+            logger.info(f"   #{i}: {route.name} - {route.score}/100")
         
         # Return ALL routes (not just top 3)
         top_routes = scored_routes  # Changed to show all routes
         
-        print(f"\n[OK] Returning all {len(top_routes)} routes")
+        logger.info(f"[OK] Returning all {len(top_routes)} routes")
         
         # Build response
         response_body = {
@@ -254,17 +262,16 @@ def calculate_routes():
             "calculatedAt": datetime.now().isoformat()
         }
         
-        print(f"\n[OK] Done! Returning {len(scored_routes)} scored routes\n")
+        logger.info(f"[OK] Done! Returning {len(scored_routes)} scored routes")
         
         return jsonify(response_body), 200
         
     except ValueError as e:
-        print(f"\n[✗] Validation error: {e}\n")
+        logger.error(f"Validation error: {e}")
         return jsonify({"error": f"Invalid input: {str(e)}"}), 400
     except Exception as e:
-        print(f"\n[✗] Server error: {e}")
+        logger.error(f"Server error: {e}")
         traceback.print_exc()
-        print()
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 
@@ -279,26 +286,26 @@ def health():
 
 
 if __name__ == '__main__':
-    print("=" * 70)
-    print("  Smart Sailing Route Planner - Development Server")
-    print("=" * 70)
-    print("\n  MODE: Running ALL algorithms, returning best 3 routes")
-    print("\n  Available Algorithms:")
-    print("    * 'naive'     - Simple geometric routes")
-    print("    * 'hybrid'    - Pattern-based wind routing")
-    print("    * 'isochrone' - Optimal isochrone algorithm")
-    print("    * 'all'       - Run all algorithms and compare [DEFAULT]")
-    print("\n  Backend running on:  http://localhost:8000")
-    print("  Frontend Vite proxy: /api -> http://localhost:8000")
-    print("\n  To test algorithms:")
-    print("    - Frontend will use 'naive' by default")
-    print("    - To test isochrone: Add {\"algorithm\": \"isochrone\"} to request")
-    print("    - Or use curl/Postman to test different algorithms")
-    print("\n  Steps to run:")
-    print("    1. Keep this terminal running")
-    print("    2. Open new terminal: cd frontend && npm run dev")
-    print("    3. Open browser: http://localhost:5173")
-    print("\n" + "=" * 70 + "\n")
+    logger.info("=" * 70)
+    logger.info("  Smart Sailing Route Planner - Development Server")
+    logger.info("=" * 70)
+    logger.info("  MODE: Running ALL algorithms, returning best 3 routes")
+    logger.info("  Available Algorithms:")
+    logger.info("    * 'naive'     - Simple geometric routes")
+    logger.info("    * 'hybrid'    - Pattern-based wind routing")
+    logger.info("    * 'isochrone' - Optimal isochrone algorithm")
+    logger.info("    * 'all'       - Run all algorithms and compare [DEFAULT]")
+    logger.info("  Backend running on:  http://localhost:8000")
+    logger.info("  Frontend Vite proxy: /api -> http://localhost:8000")
+    logger.info("  To test algorithms:")
+    logger.info("    - Frontend will use 'naive' by default")
+    logger.info("    - To test isochrone: Add {\"algorithm\": \"isochrone\"} to request")
+    logger.info("    - Or use curl/Postman to test different algorithms")
+    logger.info("  Steps to run:")
+    logger.info("    1. Keep this terminal running")
+    logger.info("    2. Open new terminal: cd frontend && npm run dev")
+    logger.info("    3. Open browser: http://localhost:5173")
+    logger.info("=" * 70)
     
     app.run(host='0.0.0.0', port=8000, debug=True)
 

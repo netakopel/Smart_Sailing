@@ -6,6 +6,7 @@ Lambda calls lambda_handler() with the request data.
 """
 
 import json
+import logging
 from datetime import datetime
 
 from models import RouteRequest, Coordinates, BoatType
@@ -13,6 +14,10 @@ from route_generator import generate_routes, calculate_distance
 from isochrone_router import generate_isochrone_routes
 from weather_fetcher import fetch_weather_for_waypoints
 from route_scorer import score_route
+
+# Set up logging (Lambda logs to CloudWatch)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def route_to_dict(route):
@@ -112,12 +117,12 @@ def lambda_handler(event, context):
         )
         
         # Step 1: Generate route options using ISOCHRONE algorithm
-        print("[ALGORITHM] Using Isochrone optimal routing")
+        logger.info("[ALGORITHM] Using Isochrone optimal routing")
         generated_routes = generate_isochrone_routes(request)
         
         # If isochrone fails or returns no routes, fallback to naive
         if not generated_routes:
-            print("[FALLBACK] Isochrone returned no routes, using naive routes")
+            logger.warning("[FALLBACK] Isochrone returned no routes, using naive routes")
             generated_routes = generate_routes(request)
         
         direct_distance = calculate_distance(request.start, request.end)
@@ -157,7 +162,7 @@ def lambda_handler(event, context):
             "body": json.dumps({"error": f"Invalid input: {str(e)}"})
         }
     except Exception as e:
-        print(f"Error: {str(e)}")  # This goes to CloudWatch logs
+        logger.error(f"Error: {str(e)}")  # This goes to CloudWatch logs
         return {
             "statusCode": 500,
             "headers": headers,

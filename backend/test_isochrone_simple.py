@@ -4,10 +4,15 @@ Simple test for isochrone router using mock weather data.
 This avoids the API call issue and allows us to test the core algorithm.
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from models import RouteRequest, Coordinates, BoatType, WaypointWeather
 from isochrone_router import calculate_isochrone_route
 from route_generator import calculate_distance
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create mock weather grid with uniform conditions
 def create_mock_weather_grid(start, end, wind_direction=0.0):
@@ -71,18 +76,18 @@ def create_mock_weather_grid(start, end, wind_direction=0.0):
 
 def test_simple_route():
     """Test with a short route."""
-    print("\n" + "="*60)
-    print("SIMPLE ISOCHRONE TEST")
-    print("="*60)
+    logger.info("="*60)
+    logger.info("SIMPLE ISOCHRONE TEST")
+    logger.info("="*60)
     
     # Very short route: 30nm south (with headwind) - easier test
     start = Coordinates(lat=50.5, lng=-1.0)
     end = Coordinates(lat=50.0, lng=-1.0)
     
     distance = calculate_distance(start, end)
-    print(f"\nRoute: ({start.lat}, {start.lng}) -> ({end.lat}, {end.lng})")
-    print(f"Distance: {distance:.1f} nm")
-    print(f"Wind: 15kt from North (headwind scenario)")
+    logger.info(f"Route: ({start.lat}, {start.lng}) -> ({end.lat}, {end.lng})")
+    logger.info(f"Distance: {distance:.1f} nm")
+    logger.info(f"Wind: 15kt from North (headwind scenario)")
     
     request = RouteRequest(
         start=start,
@@ -98,31 +103,31 @@ def test_simple_route():
     route = calculate_isochrone_route(request, weather_grid, max_time_hours=24.0)
     
     if route:
-        print(f"\n[SUCCESS] Route found!")
-        print(f"  Time: {route.estimated_hours:.1f} hours")
-        print(f"  Distance: {route.distance:.1f} nm")
-        print(f"  Waypoints: {len(route.waypoints)}")
-        print(f"  Speed: {route.distance / route.estimated_hours:.1f} knots")
+        logger.info("[SUCCESS] Route found!")
+        logger.info(f"  Time: {route.estimated_hours:.1f} hours")
+        logger.info(f"  Distance: {route.distance:.1f} nm")
+        logger.info(f"  Waypoints: {len(route.waypoints)}")
+        logger.info(f"  Speed: {route.distance / route.estimated_hours:.1f} knots")
         return True
     else:
-        print(f"\n[FAILED] No route found")
+        logger.error("[FAILED] No route found")
         return False
 
 
 def test_beam_reach():
     """Test with favorable beam reach conditions."""
-    print("\n" + "="*60)
-    print("BEAM REACH TEST")
-    print("="*60)
+    logger.info("="*60)
+    logger.info("BEAM REACH TEST")
+    logger.info("="*60)
     
     # Short route going north with wind from east (beam reach)
     start = Coordinates(lat=50.0, lng=-1.0)
     end = Coordinates(lat=50.5, lng=-1.0)
     
     distance = calculate_distance(start, end)
-    print(f"\nRoute: ({start.lat}, {start.lng}) -> ({end.lat}, {end.lng})")
-    print(f"Distance: {distance:.1f} nm")
-    print(f"Wind: 15kt from East (beam reach - fast!)")
+    logger.info(f"Route: ({start.lat}, {start.lng}) -> ({end.lat}, {end.lng})")
+    logger.info(f"Distance: {distance:.1f} nm")
+    logger.info(f"Wind: 15kt from East (beam reach - fast!)")
     
     request = RouteRequest(
         start=start,
@@ -138,20 +143,20 @@ def test_beam_reach():
     route = calculate_isochrone_route(request, weather_grid, max_time_hours=24.0)
     
     if route:
-        print(f"\n[SUCCESS] Route found!")
-        print(f"  Time: {route.estimated_hours:.1f} hours")
-        print(f"  Distance: {route.distance:.1f} nm")
-        print(f"  Waypoints: {len(route.waypoints)}")
-        print(f"  Speed: {route.distance / route.estimated_hours:.1f} knots")
+        logger.info("[SUCCESS] Route found!")
+        logger.info(f"  Time: {route.estimated_hours:.1f} hours")
+        logger.info(f"  Distance: {route.distance:.1f} nm")
+        logger.info(f"  Waypoints: {len(route.waypoints)}")
+        logger.info(f"  Speed: {route.distance / route.estimated_hours:.1f} knots")
         return True
     else:
-        print(f"\n[FAILED] No route found")
+        logger.error("[FAILED] No route found")
         return False
 
 
 if __name__ == "__main__":
-    print("Testing Isochrone Router with Mock Weather Data")
-    print("="*60)
+    logger.info("Testing Isochrone Router with Mock Weather Data")
+    logger.info("="*60)
     
     # Test 1: Simple headwind scenario
     test1_passed = test_simple_route()
@@ -159,14 +164,14 @@ if __name__ == "__main__":
     # Test 2: Favorable beam reach
     test2_passed = test_beam_reach()
     
-    print("\n" + "="*60)
-    print("TEST SUMMARY")
-    print("="*60)
-    print(f"Simple Route (Headwind): {'PASSED' if test1_passed else 'FAILED'}")
-    print(f"Beam Reach (Favorable): {'PASSED' if test2_passed else 'FAILED'}")
+    logger.info("="*60)
+    logger.info("TEST SUMMARY")
+    logger.info("="*60)
+    logger.info(f"Simple Route (Headwind): {'PASSED' if test1_passed else 'FAILED'}")
+    logger.info(f"Beam Reach (Favorable): {'PASSED' if test2_passed else 'FAILED'}")
     
     if test1_passed and test2_passed:
-        print("\n[SUCCESS] All tests passed!")
+        logger.info("[SUCCESS] All tests passed!")
     else:
-        print("\n[FAILED] Some tests failed")
+        logger.error("[FAILED] Some tests failed")
 

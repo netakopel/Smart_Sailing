@@ -14,11 +14,16 @@ This is the main script that ties everything together:
 from datetime import datetime, timedelta
 from typing import List
 import json
+import logging
 
 from models import RouteRequest, RouteResponse, Route, Coordinates, BoatType
 from route_generator import generate_routes, calculate_distance
 from weather_fetcher import fetch_weather_for_waypoints
 from route_scorer import score_route
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def calculate_routes(request: RouteRequest) -> RouteResponse:
@@ -31,37 +36,37 @@ def calculate_routes(request: RouteRequest) -> RouteResponse:
     Returns:
         RouteResponse with 3 scored routes
     """
-    print("\n=== Smart Sailing Route Planner ===")
-    print("=" * 40)
-    print(f"From: {request.start.lat:.4f}, {request.start.lng:.4f}")
-    print(f"To: {request.end.lat:.4f}, {request.end.lng:.4f}")
-    print(f"Boat: {request.boat_type.value}")
-    print(f"Departure: {request.departure_time}")
-    print()
+    logger.info("\n=== Smart Sailing Route Planner ===")
+    logger.info("=" * 40)
+    logger.info(f"From: {request.start.lat:.4f}, {request.start.lng:.4f}")
+    logger.info(f"To: {request.end.lat:.4f}, {request.end.lng:.4f}")
+    logger.info(f"Boat: {request.boat_type.value}")
+    logger.info(f"Departure: {request.departure_time}")
+    logger.info()
 
     # Step 1: Generate route options
-    print("[1] Generating routes...")
+    logger.info("[1] Generating routes...")
     generated_routes = generate_routes(request)
     
     direct_distance = calculate_distance(request.start, request.end)
-    print(f"   Direct distance: {direct_distance:.1f} nm")
+    logger.info(f"   Direct distance: {direct_distance:.1f} nm")
 
     # Step 2: Fetch weather for each route
-    print("\n[2] Fetching weather data...")
+    logger.info("\n[2] Fetching weather data...")
     routes_with_weather = []
     for route in generated_routes:
-        print(f"   {route.name}...")
+        logger.info(f"   {route.name}...")
         waypoints_with_weather = fetch_weather_for_waypoints(route.waypoints)
         # Create new route with weather data
         route.waypoints = waypoints_with_weather
         routes_with_weather.append(route)
 
     # Step 3: Score each route
-    print("\n[3] Scoring routes...")
+    logger.info("\n[3] Scoring routes...")
     scored_routes: List[Route] = []
     for route in routes_with_weather:
         scored = score_route(route, request.boat_type, direct_distance)
-        print(f"   {scored.name}: {scored.score}/100")
+        logger.info(f"   {scored.name}: {scored.score}/100")
         scored_routes.append(scored)
 
     # Sort by score (highest first)
@@ -75,53 +80,53 @@ def calculate_routes(request: RouteRequest) -> RouteResponse:
 
 def display_results(response: RouteResponse) -> None:
     """Display route results in a nice format."""
-    print("\n")
-    print("=" * 65)
-    print("                    ROUTE RECOMMENDATIONS")
-    print("=" * 65)
+    logger.info("\n")
+    logger.info("=" * 65)
+    logger.info("                    ROUTE RECOMMENDATIONS")
+    logger.info("=" * 65)
 
     medals = ["#1", "#2", "#3"]
     
     for i, route in enumerate(response.routes):
         medal = medals[i] if i < len(medals) else "  "
         
-        print(f"\n{medal} {route.name.upper()}")
-        print("-" * 40)
-        print(f"   Score:      {route.score}/100")
-        print(f"   Distance:   {route.distance} nm")
-        print(f"   Duration:   {route.estimated_time}")
+        logger.info(f"\n{medal} {route.name.upper()}")
+        logger.info("-" * 40)
+        logger.info(f"   Score:      {route.score}/100")
+        logger.info(f"   Distance:   {route.distance} nm")
+        logger.info(f"   Duration:   {route.estimated_time}")
         
         if route.warnings:
-            print("   [!] Warnings:")
+            logger.info("   [!] Warnings:")
             for w in route.warnings:
-                print(f"      - {w}")
+                logger.info(f"      - {w}")
         
-        print("   [+] Pros:")
+        logger.info("   [+] Pros:")
         for p in route.pros:
-            print(f"      - {p}")
+            logger.info(f"      - {p}")
         
-        print("   [-] Cons:")
+        logger.info("   [-] Cons:")
         for c in route.cons:
-            print(f"      - {c}")
+            logger.info(f"      - {c}")
         
         # Show weather at start and middle waypoint
         midpoint = len(route.waypoints) // 2
         
         if route.waypoints[0].weather:
             w = route.waypoints[0].weather
-            print("   Start conditions:")
-            print(f"      Wind: {w.wind_speed}kt (sustained {w.wind_sustained}kt, gusts {w.wind_gusts}kt)")
-            print(f"      Direction: {w.wind_direction} deg | Waves: {w.wave_height}m | Temp: {w.temperature}C")
+            logger.info("   Start conditions:")
+            logger.info(f"      Wind: {w.wind_speed}kt (sustained {w.wind_sustained}kt, gusts {w.wind_gusts}kt)")
+            logger.info(f"      Direction: {w.wind_direction} deg | Waves: {w.wave_height}m | Temp: {w.temperature}C")
         
         if route.waypoints[midpoint].weather:
             w = route.waypoints[midpoint].weather
-            print("   Mid-route conditions:")
-            print(f"      Wind: {w.wind_speed}kt (sustained {w.wind_sustained}kt, gusts {w.wind_gusts}kt)")
-            print(f"      Direction: {w.wind_direction} deg | Waves: {w.wave_height}m | Temp: {w.temperature}C")
+            logger.info("   Mid-route conditions:")
+            logger.info(f"      Wind: {w.wind_speed}kt (sustained {w.wind_sustained}kt, gusts {w.wind_gusts}kt)")
+            logger.info(f"      Direction: {w.wind_direction} deg | Waves: {w.wave_height}m | Temp: {w.temperature}C")
 
-    print("\n" + "=" * 65)
-    print(f"Calculated at: {response.calculated_at}")
-    print("=" * 65 + "\n")
+    logger.info("\n" + "=" * 65)
+    logger.info(f"Calculated at: {response.calculated_at}")
+    logger.info("=" * 65 + "\n")
 
 
 def route_to_dict(route: Route) -> dict:
@@ -181,15 +186,15 @@ def main():
         display_results(response)
         
         # Also output JSON for API use
-        print("\n--- JSON Response (for API use) ---")
+        logger.info("\n--- JSON Response (for API use) ---")
         json_response = {
             "routes": [route_to_dict(r) for r in response.routes],
             "calculatedAt": response.calculated_at
         }
-        print(json.dumps(json_response, indent=2))
+        logger.info(json.dumps(json_response, indent=2))
         
     except Exception as e:
-        print(f"Error calculating routes: {e}")
+        logger.info(f"Error calculating routes: {e}")
         raise
 
 
