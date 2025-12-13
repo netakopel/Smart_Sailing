@@ -203,19 +203,31 @@ Now that the full system is working end-to-end, implement TWO wind-aware algorit
   - Return 3 routes in standard format
   - Tested and working! Scenario classification passes all tests
 
-#### Phase 5B: Isochrone Algorithm (Days 15-19)
-- [ ] Create `backend/isochrone_router.py` with core isochrone propagation
+#### Phase 5B: Isochrone Algorithm (Days 15-19) ✅ COMPLETE
+- [x] Create `backend/isochrone_router.py` with core isochrone propagation
   - Implement time-based forward propagation
-  - Try all possible headings at each step (e.g., every 10°)
+  - Try all possible headings at each step (every 10°)
   - Calculate boat speed using polars + weather at each point
-- [ ] Add pruning and path reconstruction for isochrones
+  - 736 lines of sophisticated routing algorithm
+- [x] Add pruning and path reconstruction for isochrones
   - Prune dominated solutions (keep only Pareto-optimal points)
+  - Grid-based pruning to avoid revisiting cells
+  - Directional cone filtering to focus on productive headings
   - Trace back optimal path from destination to start
-  - Generate 2-3 route variations (fastest, safest)
-  - Optimize: adaptive time step, angular resolution tuning
+  - Generate route variations (fastest path)
+  - Adaptive time step and angular resolution tuning
 
-#### Phase 5C: Integration & Testing (Day 20)
-- [ ] Wire both algorithms in `lambda_function.py`
+**Implemented Features:**
+- Time-based forward propagation with isochrone waves
+- Grid-based spatial pruning (10% time tolerance)
+- Directional cone filtering to avoid backtracking
+- Polar diagram integration for accurate boat speeds
+- Weather interpolation at arbitrary points
+- Path reconstruction with parent tracking
+- No-go zone detection and avoidance
+
+#### Phase 5C: Integration & Testing (Day 20) 🔄 IN PROGRESS
+- [x] Wire both algorithms in `lambda_function.py`
   - Run both hybrid AND isochrone algorithms
   - Collect all generated routes (5-6 total)
   - Score all routes using existing `route_scorer.py`
@@ -443,7 +455,9 @@ Response:
 | Phase 2: Lambda Deployment | ✅ Done | API live at AWS! |
 | Phase 3: Frontend Development | ✅ Done | React app with beautiful UI |
 | Phase 4: Frontend Deployment | ✅ Done | Live at CloudFront! |
-| Phase 5: Smart Route Algorithm | 🔄 In Progress | Wind-aware routing with polars & isochrone |
+| Phase 5A: Foundation & Hybrid Algorithm | ✅ Done | Polars, weather grid, wind router complete |
+| Phase 5B: Isochrone Algorithm | ✅ COMPLETE | 736-line algorithm with pruning & optimization |
+| Phase 5C: Integration & Testing | 🔄 In Progress | Algorithms wired, testing remaining |
 | Phase 5D: CI/CD Setup | ✅ COMPLETE | 17 tests passing, all workflows green! |
 | Phase 6: Polish & Testing | ⬜ Not started | |
 | Phase 7: Documentation | ⬜ Not started | |
@@ -451,11 +465,13 @@ Response:
 ---
 
 **Timeline:** ~25 days (includes smart algorithm + CI/CD)
-**Current Status:** Phase 5D COMPLETE! CI/CD with 17 passing tests ✅
-**Next Priority:** Complete Phase 5B (Isochrone Algorithm) and Phase 5C (Integration)
+**Current Status:** Phase 5B & 5D COMPLETE! Isochrone algorithm + CI/CD done ✅
+**Next Priority:** Complete Phase 5C testing and move to Phase 6 (Polish & Testing)
 
-**CI/CD Achievement:**
-- ✅ 17 comprehensive backend tests in `test_backend.py`
+**Recent Achievements:**
+- ✅ **Phase 5B:** 736-line isochrone algorithm with grid pruning and optimization
+- ✅ **Phase 5C (partial):** Both algorithms integrated in lambda_function.py
+- ✅ **Phase 5D:** 17 comprehensive backend tests with CI/CD
 - ✅ All tests passing with green checkmarks
 - ✅ Frontend build and lint checks passing
 - ✅ Automated testing on every push
