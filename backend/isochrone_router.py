@@ -112,7 +112,7 @@ DIRECTIONAL_CONE_ANGLE = 140  # ±140° from direct bearing (280° total)
 DIRECTIONAL_CONE_ANGLE_NEAR_GOAL = 180  # No cone restriction when close to goal
 
 # Distance thresholds for arrival
-ARRIVAL_THRESHOLD_NM = 5.0  # Consider "arrived" within 5nm (then add final segment)
+ARRIVAL_THRESHOLD_NM = 2.0  # Consider "arrived" within 2nm (then add final segment)
 
 
 # ============================================================================
@@ -255,15 +255,17 @@ def should_prune_point(
         previous_best_time = state.visited_grid[cell]
         
         # Be progressively more lenient based on exploration stage
-        # Early on (< 30 cells), we're still discovering tacking patterns - be very lenient
-        # Medium (30-100 cells), moderate leniency
-        # Late (> 100 cells), strict
-        if len(state.visited_grid) < 30:
-            time_tolerance = 0.3  # Allow 30% slower routes early on
-        elif len(state.visited_grid) < 100:
-            time_tolerance = 0.15  # Allow 15% slower in middle phase
+        # Early on (< 50 cells), we're still discovering tacking patterns - be VERY lenient
+        # Medium (50-150 cells), moderate leniency
+        # Late (> 150 cells), strict
+        if len(state.visited_grid) < 20:
+            time_tolerance = 1.0  # Allow 100% slower routes in very early exploration
+        elif len(state.visited_grid) < 50:
+            time_tolerance = 0.5  # Allow 50% slower routes in early exploration
+        elif len(state.visited_grid) < 150:
+            time_tolerance = 0.2  # Allow 20% slower in middle phase
         else:
-            time_tolerance = 0.05  # Only 5% tolerance when well-explored
+            time_tolerance = 0.1  # Allow 10% tolerance when well-explored
         
         if point.time_hours > previous_best_time * (1 + time_tolerance):
             # Current point is significantly slower - prune it
@@ -277,24 +279,29 @@ def should_prune_point(
     if distance_to_goal < state.closest_distance_to_goal:
         state.closest_distance_to_goal = distance_to_goal
     
-    # Aggressive distance-based pruning that favors progress toward goal
-    # While still allowing tacking patterns in early exploration
+    # Distance-based pruning that favors progress while allowing tacking patterns
+    # Be more lenient than before to avoid pruning away all routes
     
     # Calculate how much we've explored
     exploration_level = len(state.visited_grid)
     
-    if exploration_level < 30:
-        # Very early: allow routes that go off course (for discovering tacking patterns)
-        if distance_to_goal > state.closest_distance_to_goal * 6.0:
+    if exploration_level < 50:
+        # Very early: allow routes that go way off course (for discovering tacking patterns)
+        if distance_to_goal > state.closest_distance_to_goal * 8.0:
             return True
-    elif exploration_level < 80:
-        # Early-medium exploration: start favoring progress
+    elif exploration_level < 150:
+        # Early-medium exploration: still generous
+        if distance_to_goal > state.closest_distance_to_goal * 4.0:
+            return True
+    elif state.closest_distance_to_goal > 30:
+        # Well-explored, far from goal: moderate pruning
         if distance_to_goal > state.closest_distance_to_goal * 3.0:
             return True
-    else:
-        # Well-explored: strongly favor points making progress toward goal
-        if distance_to_goal > state.closest_distance_to_goal * 2.0:
+    elif state.closest_distance_to_goal > 10:
+        # Well-explored, medium distance: tighter pruning
+        if distance_to_goal > state.closest_distance_to_goal * 2.5:
             return True
+    # else: Near goal (<10nm): minimal distance-based pruning
     
     return False
 
@@ -340,25 +347,35 @@ def reconstruct_path(
             weather=None  # Will be filled in later
         ))
     
-    # Add final segment to exact destination if we stopped short
+    # Always add final segment to reach exact destination
     if destination and len(waypoints) > 0:
         last_wp = waypoints[-1]
-        distance_to_dest = calculate_distance(
-            Coordinates(lat=last_wp.position.lat, lng=last_wp.position.lng),
-            destination
-        )
+        last_position = Coordinates(lat=last_wp.position.lat, lng=last_wp.position.lng)
+        distance_to_dest = calculate_distance(last_position, destination)
         
         # If we're not exactly at the destination, add final waypoint
-        if distance_to_dest > 0.1:  # More than 0.1 nm (~185 meters)
+        if distance_to_dest > 0.05:  # More than ~50 meters
             logger.info(f"Adding final segment: {distance_to_dest:.2f}nm to exact destination")
             
-            # Estimate time for final segment (conservative 5 knots for short final leg)
-            final_time_hours = final_point.time_hours + (distance_to_dest / 5.0)
+            # Use the same approach as during propagation - estimate based on last segment speed
+            if len(path_points) >= 2:
+                # Calculate average speed from last segment
+                last_point = path_points[-1]
+                prev_point = path_points[-2]
+                time_diff = last_point.time_hours - prev_point.time_hours
+                dist_diff = calculate_distance(prev_point.position, last_point.position)
+                avg_speed = dist_diff / time_diff if time_diff > 0 else 5.0
+                # Use at least 3 knots (conservative for final approach)
+                avg_speed = max(3.0, avg_speed)
+            else:
+                avg_speed = 5.0  # Default conservative speed
+            
+            final_time_hours = final_point.time_hours + (distance_to_dest / avg_speed)
             final_arrival = departure_time + timedelta(hours=final_time_hours)
             
-            logger.info(f"  Final point time: {final_point.time_hours:.2f}h")
-            logger.info(f"  Added time: {(distance_to_dest / 5.0):.2f}h")
-            logger.info(f"  Total time with final segment: {final_time_hours:.2f}h")
+            logger.info(f"  Final segment speed: {avg_speed:.1f}kt")
+            logger.info(f"  Final segment time: {(distance_to_dest / avg_speed):.2f}h")
+            logger.info(f"  Total time: {final_time_hours:.2f}h")
             
             waypoints.append(Waypoint(
                 position=Coordinates(lat=destination.lat, lng=destination.lng),
@@ -611,7 +628,7 @@ def calculate_isochrone_route(
             waypoints = reconstruct_path(arrival_point, request.start, departure_time, request.end)
             
             # Calculate route statistics
-            total_distance = calculate_route_distance([wp.position for wp in waypoints])
+            total_distance = calculate_route_distance(waypoints)
             
             # Calculate total time (use last waypoint's time)
             if waypoints:
@@ -638,6 +655,7 @@ def calculate_isochrone_route(
         logger.info(f"Time: {current_time_hours:.1f}h | Isochrone: {len(state.current_isochrone)} pts | Closest: {distance_to_goal:.1f}nm | Step: {time_step:.1f}h | Visited cells: {len(state.visited_grid)}")
         
         # Propagate isochrone forward
+        logger.debug(f"Before propagation: {len(state.current_isochrone)} points")
         state.current_isochrone = propagate_isochrone(
             current_isochrone=state.current_isochrone,
             destination=request.end,
@@ -651,6 +669,9 @@ def calculate_isochrone_route(
         # Check if isochrone is empty (no reachable points - shouldn't happen)
         if not state.current_isochrone:
             logger.error("[FAILED] Isochrone became empty - no valid paths forward")
+            logger.error(f"  Last iteration stats:")
+            logger.error(f"    Visited cells: {len(state.visited_grid)}")
+            logger.error(f"    Closest distance: {state.closest_distance_to_goal:.1f} nm")
             return None
         
         current_time_hours += time_step

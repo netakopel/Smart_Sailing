@@ -262,6 +262,7 @@ def format_duration(hours: float) -> str:
 
 
 @dataclass
+@dataclass
 class GeneratedRoute:
     """Intermediate route data before weather/scoring is added"""
     name: str
@@ -350,3 +351,94 @@ def generate_routes(request: RouteRequest) -> List[GeneratedRoute]:
     
     return routes
 
+
+def recalculate_route_times_with_wind(
+    route: GeneratedRoute,
+    boat_type: BoatType,
+    departure_time: datetime
+) -> GeneratedRoute:
+    """
+    Recalculate route estimated times based on actual wind conditions at waypoints.
+    
+    This function should be called AFTER weather data has been fetched for waypoints.
+    It calculates realistic boat speeds considering wind angles, including penalties
+    for no-go zones where sailing directly into the wind is impossible/very slow.
+    
+    Args:
+        route: Route with waypoints that have weather data
+        boat_type: Type of boat
+        departure_time: Departure time
+        
+    Returns:
+        Updated route with recalculated times and total estimated_hours
+    """
+    from polars import get_boat_speed, calculate_wind_angle
+    
+    if not route.waypoints or len(route.waypoints) < 2:
+        return route
+    
+    boat = BOAT_PROFILES[boat_type]
+    updated_waypoints = []
+    current_time = departure_time
+    
+    for i, waypoint in enumerate(route.waypoints):
+        if i == 0:
+            # First waypoint - use departure time
+            updated_waypoints.append(Waypoint(
+                position=waypoint.position,
+                estimated_arrival=current_time.isoformat(),
+                weather=waypoint.weather
+            ))
+            continue
+        
+        # Calculate segment from previous waypoint to current
+        prev_waypoint = route.waypoints[i - 1]
+        segment_distance = calculate_distance(prev_waypoint.position, waypoint.position)
+        heading = calculate_bearing(prev_waypoint.position, waypoint.position)
+        
+        # Get wind conditions at previous waypoint (where we start this segment)
+        if prev_waypoint.weather:
+            wind_speed = prev_waypoint.weather.wind_speed
+            wind_direction = prev_waypoint.weather.wind_direction
+            
+            # Calculate wind angle relative to our heading
+            wind_angle = calculate_wind_angle(heading, wind_direction)
+            
+            # Get actual boat speed from polars (accounts for wind angle, including no-go zones)
+            boat_speed = get_boat_speed(wind_speed, wind_angle, boat_type.value)
+            
+            # If in no-go zone (speed = 0) or very slow, use a minimum penalty speed
+            # This represents very slow progress (motoring, or extreme tacking)
+            if boat_speed < 1.0:
+                boat_speed = boat.avg_speed * 0.2  # 20% of average speed as penalty
+        else:
+            # No weather data, use average speed
+            boat_speed = boat.avg_speed
+        
+        # Calculate time for this segment
+        if boat_speed > 0:
+            segment_hours = segment_distance / boat_speed
+        else:
+            # Fallback: use average speed
+            segment_hours = segment_distance / boat.avg_speed
+        
+        current_time = current_time + timedelta(hours=segment_hours)
+        
+        updated_waypoints.append(Waypoint(
+            position=waypoint.position,
+            estimated_arrival=current_time.isoformat(),
+            weather=waypoint.weather
+        ))
+    
+    # Calculate total time
+    total_time_hours = (current_time - departure_time).total_seconds() / 3600
+    
+    # Return updated route
+    return GeneratedRoute(
+        name=route.name,
+        route_type=route.route_type,
+        waypoints=updated_waypoints,
+        distance=route.distance,  # Distance doesn't change
+        estimated_hours=total_time_hours,
+        estimated_time=format_duration(total_time_hours)
+    )

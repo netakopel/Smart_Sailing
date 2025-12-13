@@ -198,12 +198,13 @@ def calculate_routes():
             waypoints_with_weather = fetch_weather_for_waypoints(route.waypoints)
             
             # Check for no-go zones and dangerous conditions
+            # Skip no-go zone check for Isochrone routes (they already avoid no-go zones by design)
             no_go_count = 0
             dangerous_count = 0
             for i, wp in enumerate(waypoints_with_weather):
                 if wp.weather:
-                    # Check if sailing into wind (no-go zone) for sailboats
-                    if i < len(waypoints_with_weather) - 1:
+                    # Check if sailing into wind (no-go zone) - skip for Isochrone routes
+                    if i < len(waypoints_with_weather) - 1 and not route.name.startswith("[Isochrone]"):
                         from route_generator import calculate_bearing
                         from polars import is_in_no_go_zone, calculate_wind_angle
                         
@@ -214,7 +215,7 @@ def calculate_routes():
                             no_go_count += 1
                             logger.warning(f"      [NO-GO] Wind angle: {wind_angle:.0f}° (sailing into wind!)")
                     
-                    # Check dangerous conditions
+                    # Check dangerous conditions (check for all route types)
                     if wp.weather.wind_speed > boat.max_safe_wind_speed:
                         dangerous_count += 1
                         logger.warning(f"      [DANGER] Wind: {wp.weather.wind_speed:.1f}kt (limit: {boat.max_safe_wind_speed}kt)")
@@ -230,10 +231,29 @@ def calculate_routes():
             route.waypoints = waypoints_with_weather
             routes_with_weather.append(route)
         
+        # Step 2.5: Recalculate times for naive and hybrid routes based on actual wind conditions
+        # (Isochrone routes already account for wind perfectly in their generation)
+        logger.info("[2.5] Recalculating times with actual weather data...")
+        from route_generator import recalculate_route_times_with_wind
+        routes_with_realistic_times = []
+        for route in routes_with_weather:
+            if route.name.startswith("[Naive]") or route.name.startswith("[Hybrid]"):
+                # Recalculate times using actual fetched weather (not interpolated grid)
+                recalculated = recalculate_route_times_with_wind(
+                    route, 
+                    route_request.boat_type,
+                    datetime.fromisoformat(route_request.departure_time)
+                )
+                logger.info(f"   {route.name}: {route.estimated_hours:.1f}h -> {recalculated.estimated_hours:.1f}h")
+                routes_with_realistic_times.append(recalculated)
+            else:
+                # Isochrone routes already have realistic times based on actual propagation
+                routes_with_realistic_times.append(route)
+        
         # Step 3: Score each route
         logger.info("[3] Scoring routes...")
         scored_routes = []
-        for route in routes_with_weather:
+        for route in routes_with_realistic_times:
             scored = score_route(route, route_request.boat_type, direct_distance)
             danger_indicator = " [DANGER!]" if any("DANGER" in w for w in scored.warnings) else ""
             logger.info(f"   {scored.name}: {scored.score}/100{danger_indicator}")
