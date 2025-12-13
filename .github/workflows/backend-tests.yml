@@ -36,9 +36,8 @@ jobs:
       run: |
         cd backend
         # Run comprehensive backend test suite
-        # test_backend.py contains all unit tests for routing algorithms
-        # Excluding test_dev_server.py (requires running server - integration test)
-        python -m pytest test_backend.py test_isochrone_simple.py -v --tb=short
+        # test_backend.py contains all 17 unit tests for routing algorithms
+        python -m pytest test_backend.py -v --tb=short
       continue-on-error: false
     
     - name: Test summary
