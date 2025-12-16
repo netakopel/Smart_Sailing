@@ -216,7 +216,8 @@ def fetch_weather_for_waypoints(waypoints: List[Waypoint]) -> List[Waypoint]:
         updated_waypoints.append(Waypoint(
             position=wp.position,
             estimated_arrival=wp.estimated_arrival,
-            weather=weather
+            weather=weather,
+            heading=wp.heading  # Preserve the heading from isochrone propagation
         ))
     
     return updated_waypoints

@@ -148,14 +148,34 @@ def score_distance(
 
 
 def calculate_segment_bearings(waypoints: List[Waypoint]) -> List[float]:
-    """Calculate bearing for each segment of the route."""
+    """
+    Get heading for each segment of the route.
+    
+    For segment FROM waypoint[i] TO waypoint[i+1]:
+    - Prefer heading stored at waypoint[i+1] (represents the leg arriving at i+1)
+    - Fall back to calculating bearing between positions
+    
+    This ensures we're checking the correct heading for each segment.
+    """
     bearings = []
-    for i in range(len(waypoints) - 1):
-        bearing = calculate_bearing(
-            waypoints[i].position,
-            waypoints[i + 1].position
-        )
-        bearings.append(bearing)
+    for i in range(len(waypoints)):
+        if i < len(waypoints) - 1:
+            # Not the last waypoint - check segment to next waypoint
+            next_wp = waypoints[i + 1]
+            
+            # Use the heading stored at the NEXT waypoint (represents this segment)
+            if next_wp.heading is not None:
+                bearings.append(next_wp.heading)
+            else:
+                # Fallback: calculate bearing from current to next waypoint
+                bearing = calculate_bearing(
+                    waypoints[i].position,
+                    next_wp.position
+                )
+                bearings.append(bearing)
+        else:
+            # Last waypoint has no next segment, use 0 as default
+            bearings.append(0)
     return bearings
 
 

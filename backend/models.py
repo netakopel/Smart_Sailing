@@ -49,6 +49,7 @@ class Waypoint:
     position: Coordinates
     estimated_arrival: str  # ISO 8601 format
     weather: Optional[WaypointWeather] = None
+    heading: Optional[float] = None  # Heading used to reach this waypoint (degrees, 0-360)
 
 
 @dataclass

@@ -101,7 +101,8 @@ GRID_CELL_SIZE = 0.15  # ~9 nautical miles at mid-latitudes (larger to allow tac
 GRID_CELL_SIZE_NEAR_GOAL = 0.05  # Finer grid when close to goal for precision
 
 # Maximum isochrone size to prevent exponential explosion
-MAX_ISOCHRONE_SIZE = 100  # If isochrone grows beyond this, use aggressive pruning
+MAX_ISOCHRONE_SIZE = 50  # If isochrone grows beyond this, use aggressive pruning
+MAX_ISOCHRONE_GROWTH_WARNING = 300  # Warn if isochrone exceeds this before pruning
 
 # Adaptive time steps (hours)
 TIME_STEP_FAR = 2.0      # >50nm from goal
@@ -109,8 +110,8 @@ TIME_STEP_MEDIUM = 1.0   # 20-50nm from goal
 TIME_STEP_CLOSE = 0.5    # <20nm from goal
 
 # Directional focusing: only try headings within cone toward goal
-DIRECTIONAL_CONE_ANGLE = 140  # ±140° from direct bearing (280° total)
-DIRECTIONAL_CONE_ANGLE_NEAR_GOAL = 180  # No cone restriction when close to goal
+DIRECTIONAL_CONE_ANGLE = 100  # ±100° from direct bearing (200° total) - was 140°
+DIRECTIONAL_CONE_ANGLE_NEAR_GOAL = 140  # ±140° when close to goal - was 180°
 
 # Distance thresholds for arrival
 ARRIVAL_THRESHOLD_NM = 2.0  # Consider "arrived" within 2nm (then add final segment)
@@ -259,17 +260,17 @@ def should_prune_point(
         previous_best_time = state.visited_grid[cell]
         
         # Be progressively more lenient based on exploration stage
-        # Early on (< 50 cells), we're still discovering tacking patterns - be VERY lenient
-        # Medium (50-150 cells), moderate leniency
-        # Late (> 150 cells), strict
+        # Early on (< 50 cells), we're still discovering tacking patterns - be selective
+        # Medium (50-150 cells), moderate filtering
+        # Late (> 150 cells), strict filtering
         if len(state.visited_grid) < 20:
-            time_tolerance = 1.0  # Allow 100% slower routes in very early exploration
+            time_tolerance = 0.3  # Allow 30% slower routes in very early exploration (was 100%)
         elif len(state.visited_grid) < 50:
-            time_tolerance = 0.5  # Allow 50% slower routes in early exploration
+            time_tolerance = 0.2  # Allow 20% slower routes in early exploration (was 50%)
         elif len(state.visited_grid) < 150:
-            time_tolerance = 0.2  # Allow 20% slower in middle phase
+            time_tolerance = 0.15  # Allow 15% slower in middle phase (was 20%)
         else:
-            time_tolerance = 0.1  # Allow 10% tolerance when well-explored
+            time_tolerance = 0.08  # Allow 8% tolerance when well-explored (was 10%)
         
         if point.time_hours > previous_best_time * (1 + time_tolerance):
             # Current point is significantly slower - prune it
@@ -294,22 +295,23 @@ def should_prune_point(
     exploration_level = len(state.visited_grid)
     
     if exploration_level < 50:
-        # Very early: allow routes that go way off course (for discovering tacking patterns)
-        if distance_to_goal > state.closest_distance_to_goal * 8.0:
+        # Very early: allow routes that go somewhat off course (for discovering tacking patterns)
+        # But be more selective than before to avoid explosion
+        if distance_to_goal > state.closest_distance_to_goal * 5.0:  # was 8.0
             return True
     elif exploration_level < 150:
-        # Early-medium exploration: still generous
-        if distance_to_goal > state.closest_distance_to_goal * 4.0:
+        # Early-medium exploration: selective pruning
+        if distance_to_goal > state.closest_distance_to_goal * 3.0:  # was 4.0
             return True
     elif state.closest_distance_to_goal > 30:
-        # Well-explored, far from goal: moderate pruning
-        if distance_to_goal > state.closest_distance_to_goal * 3.0:
+        # Well-explored, far from goal: more aggressive pruning
+        if distance_to_goal > state.closest_distance_to_goal * 2.5:  # was 3.0
             return True
     elif state.closest_distance_to_goal > 10:
-        # Well-explored, medium distance: tighter pruning
-        if distance_to_goal > state.closest_distance_to_goal * 2.5:
+        # Well-explored, medium distance: even tighter pruning
+        if distance_to_goal > state.closest_distance_to_goal * 2.0:  # was 2.5
             return True
-    # else: Near goal (<10nm): minimal distance-based pruning
+    # else: Near goal (<10nm): minimal distance-based pruning (up to 2.0x)
     
     return False
 
@@ -352,7 +354,8 @@ def reconstruct_path(
         waypoints.append(Waypoint(
             position=Coordinates(lat=point.position.lat, lng=point.position.lng),
             estimated_arrival=arrival_time.isoformat(),
-            weather=None  # Will be filled in later
+            weather=None,  # Will be filled in later
+            heading=point.heading  # Store the actual sailing heading (validated during propagation)
         ))
     
     # Always add final segment to reach exact destination
@@ -466,34 +469,23 @@ def propagate_isochrone(
                 debug_counters['skipped_cone'] += 1
                 continue
             
-            # Get weather at current position and time
+            # First, estimate where we'd end up with this heading (for initial boat speed calculation)
+            # We need an initial boat_speed estimate, so use weather at current position
             current_time = departure_time + timedelta(hours=point.time_hours)
-            weather = interpolate_weather(point.position, current_time, weather_grid)
+            current_weather = interpolate_weather(point.position, current_time, weather_grid)
             
-            if weather is None:
+            if current_weather is None:
                 continue  # No weather data available
             
-            # Calculate wind angle for this heading
-            wind_angle = calculate_wind_angle(heading, weather.wind_direction)
-            
-            # Optimization 2: Skip no-go zone (boat speed = 0)
-            # For sailboats/catamarans, wind angles < 45° are impossible
-            if is_in_no_go_zone(wind_angle, boat_type):
-                debug_counters['skipped_no_go'] += 1
-                continue
+            # Calculate wind angle for this heading using current weather
+            wind_angle = calculate_wind_angle(heading, current_weather.wind_direction)
             
             # Get boat speed from polar diagram
-            boat_speed = get_boat_speed(weather.wind_speed, wind_angle, boat_type)
+            boat_speed = get_boat_speed(current_weather.wind_speed, wind_angle, boat_type)
             
             if boat_speed <= 0:
                 debug_counters['skipped_zero_speed'] += 1
                 continue  # Can't make progress in this direction
-            
-            # Debug: track boat speeds for analysis
-            if 'speeds' not in debug_counters:
-                debug_counters['speeds'] = []
-            if len(debug_counters['speeds']) < 10:  # Track more samples
-                debug_counters['speeds'].append((heading, wind_angle, boat_speed))
             
             # Calculate distance traveled in this time step
             distance_nm = boat_speed * time_step_hours
@@ -501,12 +493,37 @@ def propagate_isochrone(
             # Calculate new position
             new_position = calculate_destination(point.position, distance_nm, heading)
             
+            # Now get weather at the DESTINATION position and time (where we'll arrive)
+            arrival_time = departure_time + timedelta(hours=point.time_hours + time_step_hours)
+            destination_weather = interpolate_weather(new_position, arrival_time, weather_grid)
+            
+            if destination_weather is None:
+                continue  # No weather data at destination
+            
+            # Calculate wind angle at destination using destination weather
+            destination_wind_angle = calculate_wind_angle(heading, destination_weather.wind_direction)
+            
+            # Optimization 2: Skip no-go zone (boat speed = 0)
+            # For sailboats/catamarans, wind angles < 45° are impossible
+            # Check the DESTINATION weather, not the current weather
+            if is_in_no_go_zone(destination_wind_angle, boat_type):
+                debug_counters['skipped_no_go'] += 1
+                continue
+            
+            # Debug: track boat speeds for analysis
+            if 'speeds' not in debug_counters:
+                debug_counters['speeds'] = []
+            if len(debug_counters['speeds']) < 10:  # Track more samples
+                debug_counters['speeds'].append((heading, destination_wind_angle, boat_speed))
+            
             # Create new isochrone point
+            # Note: heading represents the direction traveled FROM parent TO this new point
+            # It's the heading OF the parent point (the leg we just sailed)
             new_point = IsochronePoint(
                 position=new_position,
                 time_hours=point.time_hours + time_step_hours,
                 parent=point,
-                heading=heading,
+                heading=heading,  # Heading of the leg FROM parent TO new_point
                 accumulated_distance=point.accumulated_distance + distance_nm
             )
             
@@ -539,8 +556,14 @@ def propagate_isochrone(
                 logger.debug(f"    Bearing to goal: {destination_bearing:.0f}deg")
     
     # Always favor points closer to goal by sorting and limiting isochrone size
+    if len(next_isochrone) > MAX_ISOCHRONE_GROWTH_WARNING:
+        # Warn if isochrone is exploding (suggests pruning isn't aggressive enough)
+        logger.warning(f"  ⚠️  Isochrone explosion detected: {len(next_isochrone)} points (threshold: {MAX_ISOCHRONE_GROWTH_WARNING})")
+        logger.warning(f"      This suggests pruning logic is too lenient. Consider adjusting time_tolerance or pruning strategies.")
+    
     if len(next_isochrone) > max_size:
-        logger.debug(f"  Isochrone size ({len(next_isochrone)}) exceeds max ({max_size}), keeping closest {max_size} points")
+        reduction_ratio = len(next_isochrone) / max_size
+        logger.info(f"  Isochrone pruning: {len(next_isochrone)} → {max_size} points ({reduction_ratio:.1f}x reduction)")
         # Sort by distance to goal and keep only the closest N points
         next_isochrone.sort(key=lambda p: calculate_distance(p.position, destination))
         next_isochrone = next_isochrone[:max_size]

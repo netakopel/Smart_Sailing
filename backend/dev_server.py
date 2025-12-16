@@ -22,10 +22,15 @@ from weather_fetcher import fetch_weather_for_waypoints
 from route_scorer import score_route
 from route_generator import calculate_distance  # , generate_routes
 
-# Set up logging
+# Set up logging - both to file and console
+log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG,  # Capture DEBUG and above
+    format=log_format,
+    handlers=[
+        logging.FileHandler('backend.log'),  # Save to file
+        logging.StreamHandler()  # Also print to console/terminal
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -221,24 +226,11 @@ def calculate_routes():
             logger.info(f"   {route.name}: {len(route.waypoints)} waypoints...")
             waypoints_with_weather = fetch_weather_for_waypoints(route.waypoints)
             
-            # Check for no-go zones and dangerous conditions
-            # (Will be extracted and attached to route after scoring)
-            no_go_count = 0
+            # Check for dangerous conditions (high wind/waves)
+            # No-go zone checks are done later in the detailed validation
             dangerous_count = 0
             for i, wp in enumerate(waypoints_with_weather):
                 if wp.weather:
-                    # Check if sailing into wind (no-go zone) - CHECK FOR ALL ROUTE TYPES
-                    if i < len(waypoints_with_weather) - 1:
-                        from route_generator import calculate_bearing
-                        from polars import is_in_no_go_zone, calculate_wind_angle
-                        
-                        heading = calculate_bearing(wp.position, waypoints_with_weather[i+1].position)
-                        wind_angle = calculate_wind_angle(heading, wp.weather.wind_direction)
-                        
-                        if is_in_no_go_zone(wind_angle, boat.boat_type.value):
-                            no_go_count += 1
-                            logger.warning(f"      [NO-GO] Segment {i}->{i+1}: Heading {heading:.0f}°, Wind angle: {wind_angle:.0f}° (sailing into wind!)")
-                    
                     # Check dangerous conditions (check for all route types)
                     if wp.weather.wind_speed > boat.max_safe_wind_speed:
                         dangerous_count += 1
@@ -247,8 +239,6 @@ def calculate_routes():
                         dangerous_count += 1
                         logger.warning(f"      [DANGER] Waves: {wp.weather.wave_height:.1f}m (limit: {boat.max_safe_wave_height}m)")
             
-            if no_go_count > 0:
-                logger.warning(f"      >>> {no_go_count} NO-GO ZONE waypoint(s) detected!")
             if dangerous_count > 0:
                 logger.warning(f"      >>> {dangerous_count} DANGEROUS condition(s) detected!")
             
@@ -287,16 +277,34 @@ def calculate_routes():
                     logger.warning(f"      -> {danger_warnings[0]}")
             
             # Extract NO-GO zone violations from warnings for frontend
+            # IMPORTANT: Use stored heading from propagation, not recalculated bearing
+            # During isochrone propagation, headings are validated against no-go zones.
+            # Recalculating bearings between waypoint positions can give different results
+            # and falsely trigger no-go zone warnings. Always use the validated heading.
             no_go_violations = []
+            logger.info(f"      Checking {len(scored.waypoints)} waypoints for no-go zone violations...")
             for i, wp in enumerate(scored.waypoints[:-1]):  # All but last waypoint
                 if wp.weather:
                     from route_generator import calculate_bearing
                     from polars import is_in_no_go_zone, calculate_wind_angle
                     
-                    heading = calculate_bearing(wp.position, scored.waypoints[i+1].position)
-                    wind_angle = calculate_wind_angle(heading, wp.weather.wind_direction)
+                    # To check the segment FROM waypoint[i] TO waypoint[i+1]:
+                    # - First try the heading stored at waypoint[i+1] (represents the leg arriving at i+1)
+                    # - Fall back to calculating bearing between waypoints
+                    next_wp = scored.waypoints[i+1]
+                    
+                    if next_wp.heading is not None:
+                        heading = next_wp.heading
+                        logger.debug(f"        WP{i}: Using STORED heading from NEXT waypoint: {heading:.1f}°")
+                    else:
+                        heading = calculate_bearing(wp.position, next_wp.position)
+                        logger.debug(f"        WP{i}: CALCULATED heading: {heading:.1f}° (no stored heading at next WP)")
+                    
+                    wind_angle = calculate_wind_angle(heading, next_wp.weather.wind_direction)
+                    logger.debug(f"        WP{i}: heading={heading:.1f}°, wind_from={next_wp.weather.wind_direction:.1f}°, wind_angle={wind_angle:.1f}°")
                     
                     if is_in_no_go_zone(wind_angle, route_request.boat_type.value):
+                        logger.warning(f"        WP{i}: NO-GO ZONE VIOLATION! wind_angle={wind_angle:.1f}°")
                         no_go_violations.append({
                             'segmentIndex': i,
                             'heading': heading,
