@@ -487,6 +487,12 @@ def propagate_isochrone(
                 debug_counters['skipped_zero_speed'] += 1
                 continue  # Can't make progress in this direction
             
+            # Debug: log first attempt to see what weather we're working with
+            if debug_counters['added'] == 0 and debug_counters['total_headings_tried'] <= 3:
+                logger.debug(f"    Weather at {point.position.lat:.3f},{point.position.lng:.3f}: "
+                           f"wind={current_weather.wind_speed:.1f}kt@{current_weather.wind_direction:.0f}° "
+                           f"wave={current_weather.wave_height:.1f}m")
+            
             # Calculate distance traveled in this time step
             distance_nm = boat_speed * time_step_hours
             
@@ -538,22 +544,23 @@ def propagate_isochrone(
     
     # Debug output if isochrone is empty or very small
     if len(next_isochrone) <= 2:
-        logger.debug(f"  Propagation stats:")
-        logger.debug(f"    Headings tried: {debug_counters['total_headings_tried']}")
-        logger.debug(f"    Skipped (cone): {debug_counters['skipped_cone']}")
-        logger.debug(f"    Skipped (no-go): {debug_counters['skipped_no_go']}")
-        logger.debug(f"    Skipped (zero speed): {debug_counters['skipped_zero_speed']}")
-        logger.debug(f"    Pruned: {debug_counters['pruned']}")
-        logger.debug(f"    Added: {debug_counters['added']}")
+        logger.warning(f"  ⚠️  SMALL ISOCHRONE WARNING: Only {len(next_isochrone)} points remaining!")
+        logger.warning(f"  Propagation stats:")
+        logger.warning(f"    Headings tried: {debug_counters['total_headings_tried']}")
+        logger.warning(f"    Skipped (cone): {debug_counters['skipped_cone']}")
+        logger.warning(f"    Skipped (no-go): {debug_counters['skipped_no_go']}")
+        logger.warning(f"    Skipped (zero speed): {debug_counters['skipped_zero_speed']}")
+        logger.warning(f"    Pruned: {debug_counters['pruned']}")
+        logger.warning(f"    Added: {debug_counters['added']}")
         if 'speeds' in debug_counters and debug_counters['speeds']:
             speeds_sample = debug_counters['speeds']
-            logger.debug(f"    Sample speeds (first {len(speeds_sample)} valid headings):")
+            logger.warning(f"    Sample speeds (first {len(speeds_sample)} valid headings):")
             for hdg, wa, spd in speeds_sample:
-                logger.debug(f"      {hdg}deg wind@{wa:.0f}deg = {spd:.1f}kt")
+                logger.warning(f"      {hdg}deg wind@{wa:.0f}deg = {spd:.1f}kt")
             # Check if we tried heading toward goal
             destination_bearing = calculate_bearing(current_isochrone[0].position if current_isochrone else None, destination)
             if destination_bearing and current_isochrone:
-                logger.debug(f"    Bearing to goal: {destination_bearing:.0f}deg")
+                logger.warning(f"    Bearing to goal: {destination_bearing:.0f}deg")
     
     # Always favor points closer to goal by sorting and limiting isochrone size
     if len(next_isochrone) > MAX_ISOCHRONE_GROWTH_WARNING:
@@ -751,7 +758,7 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
         start=request.start,
         end=request.end,
         departure_time=request.departure_time,
-        grid_spacing=10.0,  # 10nm grid spacing
+        grid_spacing=5.0,  # 5nm grid spacing (4x more detail = better routing decisions)
         forecast_hours=forecast_hours
     )
     
