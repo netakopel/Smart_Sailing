@@ -716,7 +716,7 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
         start=request.start,
         end=request.end,
         departure_time=request.departure_time,
-        grid_spacing=10.0,  # 10nm grid spacing
+        grid_spacing=20.0,  # 20nm grid spacing (increased from 10nm to reduce API calls)
         forecast_hours=forecast_hours
     )
     
@@ -725,6 +725,11 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
     # Check if we have weather data
     if not weather_grid.get('grid_points') or not weather_grid.get('weather_data'):
         logger.error("No weather data available - cannot calculate route")
+        logger.error("This could mean:")
+        logger.error("  1. Weather API is blocked/rate-limited (check logs above)")
+        logger.error("  2. API request failed (network issue)")
+        logger.error("  3. No grid points were generated")
+        logger.error("Try again in a few minutes, or check your internet connection.")
         return []
     
     # Calculate primary route (fastest)

@@ -157,9 +157,16 @@ def fetch_weather_for_waypoints(waypoints: List[Waypoint]) -> List[Waypoint]:
         if weather_response.ok:
             weather_data = weather_response.json()
         else:
-            logger.warning(f"  Warning: Weather API returned status {weather_response.status_code}")
+            status = weather_response.status_code
+            logger.warning(f"  Warning: Weather API returned status {status}")
+            if status == 429:
+                logger.error("  ERROR: Rate limit exceeded! API may have blocked you.")
+                logger.error("  Try again later or reduce the number of waypoints/grid points.")
+            elif status == 403:
+                logger.error("  ERROR: API access forbidden. You may be blocked.")
     except Exception as e:
         logger.warning(f"  Warning: Weather API call failed: {e}")
+        logger.warning(f"  Error type: {type(e).__name__}")
     
     try:
         # Fetch marine data (waves)
@@ -174,9 +181,16 @@ def fetch_weather_for_waypoints(waypoints: List[Waypoint]) -> List[Waypoint]:
         if marine_response.ok:
             marine_data = marine_response.json()
         else:
-            logger.warning(f"  Warning: Marine API returned status {marine_response.status_code}")
+            status = marine_response.status_code
+            logger.warning(f"  Warning: Marine API returned status {status}")
+            if status == 429:
+                logger.error("  ERROR: Rate limit exceeded! API may have blocked you.")
+                logger.error("  Try again later or reduce the number of waypoints/grid points.")
+            elif status == 403:
+                logger.error("  ERROR: API access forbidden. You may be blocked.")
     except Exception as e:
         logger.warning(f"  Warning: Marine API call failed: {e}")
+        logger.warning(f"  Error type: {type(e).__name__}")
     
     # Process response and create updated waypoints
     updated_waypoints = []
@@ -333,6 +347,39 @@ def calculate_forecast_hours_needed(distance_nm: float, avg_boat_speed: float, b
     return forecast_hours
 
 
+def test_weather_api_access() -> bool:
+    """
+    Test if weather API is accessible and not blocked.
+    
+    Returns:
+        True if API is accessible, False if blocked or error
+    """
+    try:
+        # Test with a simple single-point request
+        test_response = requests.get(WEATHER_APIS['default'], params={
+            'latitude': '40.0',
+            'longitude': '-70.0',
+            'hourly': 'wind_speed_10m',
+            'forecast_days': 1
+        }, timeout=10)
+        
+        if test_response.status_code == 429:
+            logger.error("  API TEST: Rate limit exceeded - you may be blocked")
+            return False
+        elif test_response.status_code == 403:
+            logger.error("  API TEST: Access forbidden - you are blocked")
+            return False
+        elif test_response.ok:
+            logger.info("  API TEST: Weather API is accessible")
+            return True
+        else:
+            logger.warning(f"  API TEST: Unexpected status {test_response.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"  API TEST: Failed to connect - {e}")
+        return False
+
+
 def fetch_regional_weather_grid(
     start: Coordinates,
     end: Coordinates,
@@ -414,14 +461,25 @@ def fetch_regional_weather_grid(
     weather_data = {}
     
     # Split grid points into chunks if needed
-    for chunk_start in range(0, len(grid_points), MAX_LOCATIONS_PER_REQUEST):
+    import time
+    chunk_count = (len(grid_points) + MAX_LOCATIONS_PER_REQUEST - 1) // MAX_LOCATIONS_PER_REQUEST
+    logger.warning(f"  Making {chunk_count} API call chunks (2 requests per chunk = {chunk_count * 2} total)")
+    
+    for chunk_idx, chunk_start in enumerate(range(0, len(grid_points), MAX_LOCATIONS_PER_REQUEST)):
         chunk = grid_points[chunk_start:chunk_start + MAX_LOCATIONS_PER_REQUEST]
+        
+        # Add delay between chunks to avoid rate limiting (except for first chunk)
+        if chunk_idx > 0:
+            delay = 2.0  # 2 seconds between chunks
+            logger.warning(f"  Waiting {delay}s before next chunk (to avoid rate limits)...")
+            time.sleep(delay)
         
         lat_str = ','.join(str(lat) for lat, lng in chunk)
         lng_str = ','.join(str(lng) for lat, lng in chunk)
         
         try:
             # Fetch weather data
+            logger.warning(f"  Chunk {chunk_idx + 1}/{chunk_count}: Fetching weather for {len(chunk)} points...")
             weather_response = requests.get(weather_api_url, params={
                 'latitude': lat_str,
                 'longitude': lng_str,
@@ -431,12 +489,22 @@ def fetch_regional_weather_grid(
             }, timeout=30)
             
             if not weather_response.ok:
-                logger.warning(f"  Warning: Weather API returned status {weather_response.status_code}")
+                status = weather_response.status_code
+                logger.warning(f"  Warning: Weather API returned status {status}")
+                if status == 429:
+                    logger.error(f"  ERROR: Rate limit exceeded on chunk {chunk_idx + 1}!")
+                    logger.error("  API may have blocked you. Stopping grid fetch.")
+                    break
+                elif status == 403:
+                    logger.error(f"  ERROR: API access forbidden on chunk {chunk_idx + 1}!")
+                    logger.error("  You may be blocked. Stopping grid fetch.")
+                    break
                 continue
                 
             response_data = weather_response.json()
             
             # Fetch marine data (waves)
+            logger.warning(f"  Chunk {chunk_idx + 1}/{chunk_count}: Fetching marine data...")
             marine_response = requests.get(MARINE_API_URL, params={
                 'latitude': lat_str,
                 'longitude': lng_str,
@@ -444,6 +512,16 @@ def fetch_regional_weather_grid(
                 'start_date': start_date,
                 'end_date': end_date
             }, timeout=30)
+            
+            if not marine_response.ok:
+                status = marine_response.status_code
+                logger.warning(f"  Warning: Marine API returned status {status}")
+                if status == 429:
+                    logger.error(f"  ERROR: Rate limit exceeded on marine API chunk {chunk_idx + 1}!")
+                    logger.error("  API may have blocked you.")
+                elif status == 403:
+                    logger.error(f"  ERROR: Marine API access forbidden on chunk {chunk_idx + 1}!")
+                    logger.error("  You may be blocked.")
             
             marine_response_data = marine_response.json() if marine_response.ok else []
             

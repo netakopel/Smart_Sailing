@@ -16,11 +16,11 @@ import traceback
 import logging
 
 from models import RouteRequest, Coordinates, BoatType, BOAT_PROFILES
-from wind_router import generate_hybrid_routes
+# from wind_router import generate_hybrid_routes
 from isochrone_router import generate_isochrone_routes
 from weather_fetcher import fetch_weather_for_waypoints
 from route_scorer import score_route
-from route_generator import calculate_distance, generate_routes
+from route_generator import calculate_distance  # , generate_routes
 
 # Set up logging
 logging.basicConfig(
@@ -71,10 +71,8 @@ def calculate_routes():
     Calculate smart wind-aware routes.
     
     Can use different algorithms based on 'algorithm' parameter:
-    - 'naive' (default): Simple geometric routes
-    - 'hybrid': Pattern-based wind routing
-    - 'isochrone': Optimal isochrone algorithm
-    - 'all': Run all algorithms and return combined results
+    - 'isochrone' (default): Optimal isochrone algorithm
+    - 'all': Run isochrone algorithm (same as 'isochrone')
     """
     
     # Handle CORS preflight
@@ -91,7 +89,7 @@ def calculate_routes():
                 return jsonify({"error": f"Missing required field: {field}"}), 400
         
         # Optional: algorithm selection
-        algorithm = body.get("algorithm", "all")  # Default to all algorithms
+        algorithm = body.get("algorithm", "isochrone")  # Default to isochrone algorithm
         
         # Parse into our data types
         route_request = RouteRequest(
@@ -117,17 +115,22 @@ def calculate_routes():
         logger.info(f"[1] Generating routes ({algorithm})...")
         generated_routes = []
         
-        if algorithm == "naive":
-            # Simple geometric routes
-            generated_routes = generate_routes(route_request)
-            logger.info(f"   Generated {len(generated_routes)} naive routes")
-            
-        elif algorithm == "hybrid":
-            # Pattern-based wind routing
-            generated_routes = generate_hybrid_routes(route_request)
-            logger.info(f"   Generated {len(generated_routes)} hybrid routes")
-            
-        elif algorithm == "isochrone":
+        # Handle deprecated algorithms
+        if algorithm == "naive" or algorithm == "hybrid":
+            logger.warning(f"   Algorithm '{algorithm}' is disabled. Using 'isochrone' instead.")
+            algorithm = "isochrone"
+        
+        # if algorithm == "naive":
+        #     # Simple geometric routes
+        #     generated_routes = generate_routes(route_request)
+        #     logger.info(f"   Generated {len(generated_routes)} naive routes")
+        #     
+        # elif algorithm == "hybrid":
+        #     # Pattern-based wind routing
+        #     generated_routes = generate_hybrid_routes(route_request)
+        #     logger.info(f"   Generated {len(generated_routes)} hybrid routes")
+        #     
+        if algorithm == "isochrone":
             # Optimal isochrone algorithm
             try:
                 generated_routes = generate_isochrone_routes(route_request)
@@ -138,28 +141,34 @@ def calculate_routes():
                 logger.error(f"   ERROR in isochrone algorithm: {e}")
                 traceback.print_exc()
                 # Fallback to naive routes if isochrone fails
-                logger.info("   Falling back to naive routes...")
-                generated_routes = generate_routes(route_request)
+                # logger.info("   Falling back to naive routes...")
+                # generated_routes = generate_routes(route_request)
+                generated_routes = []  # No fallback - only isochrone
             
         elif algorithm == "all":
             # Run all algorithms and combine results
-            logger.info("   Running ALL algorithms...")
+            logger.info("   Running isochrone algorithm only...")
             
             # Run naive routes
-            try:
-                naive = generate_routes(route_request)
-                logger.info(f"   - Naive: {len(naive)} routes")
-            except Exception as e:
-                logger.error(f"   - Naive: FAILED ({e})")
-                naive = []
+            # try:
+            #     naive = generate_routes(route_request)
+            #     logger.info(f"   - Naive: {len(naive)} routes")
+            # except Exception as e:
+            #     logger.error(f"   - Naive: FAILED ({e})")
+            #     naive = []
             
             # Run hybrid routes
-            try:
-                hybrid = generate_hybrid_routes(route_request)
-                logger.info(f"   - Hybrid: {len(hybrid)} routes")
-            except Exception as e:
-                logger.error(f"   - Hybrid: FAILED ({e})")
-                hybrid = []
+            # try:
+            #     hybrid = generate_hybrid_routes(route_request)
+            #     logger.info(f"   - Hybrid: {len(hybrid)} routes")
+            # except Exception as e:
+            #     logger.error(f"   - Hybrid: FAILED ({e})")
+            #     hybrid = []
+            
+            # Add delay before isochrone to avoid API rate limits
+            # import time
+            # logger.info("   Waiting 3 seconds before isochrone (to avoid API rate limits)...")
+            # time.sleep(3)
             
             # Run isochrone routes
             try:
@@ -170,14 +179,15 @@ def calculate_routes():
                 isochrone = []
             
             # Rename routes to show which algorithm generated them
-            for r in naive:
-                r.name = f"[Naive] {r.name}"
-            for r in hybrid:
-                r.name = f"[Hybrid] {r.name}"
+            # for r in naive:
+            #     r.name = f"[Naive] {r.name}"
+            # for r in hybrid:
+            #     r.name = f"[Hybrid] {r.name}"
             for r in isochrone:
                 r.name = f"[Isochrone] {r.name}"
             
-            generated_routes = naive + hybrid + isochrone
+            # generated_routes = naive + hybrid + isochrone
+            generated_routes = isochrone
             logger.info(f"   Total: {len(generated_routes)} routes")
         else:
             return jsonify({"error": f"Unknown algorithm: {algorithm}"}), 400
@@ -234,21 +244,21 @@ def calculate_routes():
         # Step 2.5: Recalculate times for naive and hybrid routes based on actual wind conditions
         # (Isochrone routes already account for wind perfectly in their generation)
         logger.info("[2.5] Recalculating times with actual weather data...")
-        from route_generator import recalculate_route_times_with_wind
+        # from route_generator import recalculate_route_times_with_wind
         routes_with_realistic_times = []
         for route in routes_with_weather:
-            if route.name.startswith("[Naive]") or route.name.startswith("[Hybrid]"):
-                # Recalculate times using actual fetched weather (not interpolated grid)
-                recalculated = recalculate_route_times_with_wind(
-                    route, 
-                    route_request.boat_type,
-                    datetime.fromisoformat(route_request.departure_time)
-                )
-                logger.info(f"   {route.name}: {route.estimated_hours:.1f}h -> {recalculated.estimated_hours:.1f}h")
-                routes_with_realistic_times.append(recalculated)
-            else:
-                # Isochrone routes already have realistic times based on actual propagation
-                routes_with_realistic_times.append(route)
+            # if route.name.startswith("[Naive]") or route.name.startswith("[Hybrid]"):
+            #     # Recalculate times using actual fetched weather (not interpolated grid)
+            #     recalculated = recalculate_route_times_with_wind(
+            #         route, 
+            #         route_request.boat_type,
+            #         datetime.fromisoformat(route_request.departure_time)
+            #     )
+            #     logger.info(f"   {route.name}: {route.estimated_hours:.1f}h -> {recalculated.estimated_hours:.1f}h")
+            #     routes_with_realistic_times.append(recalculated)
+            # else:
+            # Isochrone routes already have realistic times based on actual propagation
+            routes_with_realistic_times.append(route)
         
         # Step 3: Score each route
         logger.info("[3] Scoring routes...")
@@ -300,8 +310,8 @@ def health():
     """Health check endpoint."""
     return jsonify({
         "status": "ok", 
-        "algorithms": ["naive", "hybrid", "isochrone", "all"],
-        "default": "naive"
+        "algorithms": ["isochrone", "all"],  # ["naive", "hybrid", "isochrone", "all"],
+        "default": "isochrone"
     }), 200
 
 
@@ -309,16 +319,16 @@ if __name__ == '__main__':
     logger.info("=" * 70)
     logger.info("  Smart Sailing Route Planner - Development Server")
     logger.info("=" * 70)
-    logger.info("  MODE: Running ALL algorithms, returning best 3 routes")
+    logger.info("  MODE: Running ISOCHRONE algorithm only")
     logger.info("  Available Algorithms:")
-    logger.info("    * 'naive'     - Simple geometric routes")
-    logger.info("    * 'hybrid'    - Pattern-based wind routing")
-    logger.info("    * 'isochrone' - Optimal isochrone algorithm")
-    logger.info("    * 'all'       - Run all algorithms and compare [DEFAULT]")
+    # logger.info("    * 'naive'     - Simple geometric routes")
+    # logger.info("    * 'hybrid'    - Pattern-based wind routing")
+    logger.info("    * 'isochrone' - Optimal isochrone algorithm [DEFAULT]")
+    logger.info("    * 'all'       - Run isochrone algorithm (same as 'isochrone')")
     logger.info("  Backend running on:  http://localhost:8000")
     logger.info("  Frontend Vite proxy: /api -> http://localhost:8000")
     logger.info("  To test algorithms:")
-    logger.info("    - Frontend will use 'naive' by default")
+    logger.info("    - Frontend will use 'isochrone' by default")
     logger.info("    - To test isochrone: Add {\"algorithm\": \"isochrone\"} to request")
     logger.info("    - Or use curl/Postman to test different algorithms")
     logger.info("  Steps to run:")
