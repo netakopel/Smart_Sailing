@@ -110,8 +110,8 @@ TIME_STEP_MEDIUM = 1.0   # 20-50nm from goal
 TIME_STEP_CLOSE = 0.5    # <20nm from goal
 
 # Directional focusing: only try headings within cone toward goal
-DIRECTIONAL_CONE_ANGLE = 140  # ±140° from direct bearing (280° total) - increased to allow more exploration (was 100°)
-DIRECTIONAL_CONE_ANGLE_NEAR_GOAL = 180  # ±180° when close to goal (allow all directions) - increased (was 140°)
+DIRECTIONAL_CONE_ANGLE = 100  # ±100° from direct bearing (200° total) - was 140°
+DIRECTIONAL_CONE_ANGLE_NEAR_GOAL = 140  # ±140° when close to goal - was 180°
 
 # Distance thresholds for arrival
 ARRIVAL_THRESHOLD_NM = 2.0  # Consider "arrived" within 2nm (then add final segment)
@@ -256,15 +256,14 @@ def should_prune_point(
         # Be progressively more lenient based on exploration stage
         # Early on, be lenient to allow diverse route discovery
         # Later, apply more selective filtering
-        # IMPORTANT: Use LARGER tolerances to prevent isochrone collapse
         if len(state.visited_grid) < 20:
-            time_tolerance = 0.75  # Allow 75% slower routes in very early exploration (was 0.5)
+            time_tolerance = 0.5  # Allow 50% slower routes in very early exploration
         elif len(state.visited_grid) < 50:
-            time_tolerance = 0.60  # Allow 60% slower routes in early exploration (was 0.35)
+            time_tolerance = 0.35  # Allow 35% slower routes in early exploration
         elif len(state.visited_grid) < 150:
-            time_tolerance = 0.45  # Allow 45% slower in middle phase (was 0.25)
+            time_tolerance = 0.25  # Allow 25% slower in middle phase
         else:
-            time_tolerance = 0.30  # Allow 30% tolerance when well-explored (was 0.15)
+            time_tolerance = 0.15  # Allow 15% tolerance when well-explored
         
         if point.time_hours > previous_best_time * (1 + time_tolerance):
             # Current point is significantly slower - prune it
@@ -482,6 +481,12 @@ def propagate_isochrone(
                 debug_counters['skipped_zero_speed'] += 1
                 continue  # Can't make progress in this direction
             
+            # Debug: log first attempt to see what weather we're working with
+            if debug_counters['added'] == 0 and debug_counters['total_headings_tried'] <= 3:
+                logger.debug(f"    Weather at {point.position.lat:.3f},{point.position.lng:.3f}: "
+                           f"wind={current_weather.wind_speed:.1f}kt@{current_weather.wind_direction:.0f}° "
+                           f"wave={current_weather.wave_height:.1f}m")
+            
             # Calculate distance traveled in this time step
             distance_nm = boat_speed * time_step_hours
             
@@ -533,7 +538,7 @@ def propagate_isochrone(
     
     # Debug output if isochrone is empty or very small
     if len(next_isochrone) <= 2:
-        logger.warning(f"  SMALL ISOCHRONE WARNING: Only {len(next_isochrone)} points remaining!")
+        logger.warning(f"  ⚠️  SMALL ISOCHRONE WARNING: Only {len(next_isochrone)} points remaining!")
         logger.warning(f"  Propagation stats:")
         logger.warning(f"    Headings tried: {debug_counters['total_headings_tried']}")
         logger.warning(f"    Skipped (cone): {debug_counters['skipped_cone']}")

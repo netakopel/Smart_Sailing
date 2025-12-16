@@ -341,12 +341,30 @@ def calculate_routes():
         return jsonify(response_body), 200
         
     except ValueError as e:
-        logger.error(f"Validation error: {e}")
+        logger.error(f"[VALIDATION ERROR] {e}")
         return jsonify({"error": f"Invalid input: {str(e)}"}), 400
     except Exception as e:
-        logger.error(f"Server error: {e}")
+        error_msg = str(e)
+        logger.error(f"[SERVER ERROR] {error_msg}")
         traceback.print_exc()
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
+        
+        # Check for rate limit issues
+        if "429" in error_msg or "rate" in error_msg.lower():
+            logger.error("[RATE LIMIT] API rate limit exceeded - Open-Meteo may have blocked this IP")
+            return jsonify({
+                "error": "API rate limit exceeded. Please try again in a few minutes.",
+                "details": "Open-Meteo weather API blocked due to too many requests"
+            }), 429
+        
+        # Check for timeout issues
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            logger.error("[TIMEOUT] Request timed out during processing")
+            return jsonify({
+                "error": "Request timed out. Try with closer locations or simpler routes.",
+                "details": "Processing took too long"
+            }), 504
+        
+        return jsonify({"error": f"Server error: {error_msg}"}), 500
 
 
 @app.route('/health', methods=['GET'])
