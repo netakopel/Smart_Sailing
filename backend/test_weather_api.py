@@ -7,7 +7,7 @@ Run this to diagnose API issues:
 
 import sys
 import logging
-from weather_fetcher import test_weather_api_access, MARINE_API_URL, WEATHER_APIS
+from weather_fetcher import MARINE_API_URL, WEATHER_APIS
 import requests
 
 logging.basicConfig(

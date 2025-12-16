@@ -347,39 +347,6 @@ def calculate_forecast_hours_needed(distance_nm: float, avg_boat_speed: float, b
     return forecast_hours
 
 
-def test_weather_api_access() -> bool:
-    """
-    Test if weather API is accessible and not blocked.
-    
-    Returns:
-        True if API is accessible, False if blocked or error
-    """
-    try:
-        # Test with a simple single-point request
-        test_response = requests.get(WEATHER_APIS['default'], params={
-            'latitude': '40.0',
-            'longitude': '-70.0',
-            'hourly': 'wind_speed_10m',
-            'forecast_days': 1
-        }, timeout=10)
-        
-        if test_response.status_code == 429:
-            logger.error("  API TEST: Rate limit exceeded - you may be blocked")
-            return False
-        elif test_response.status_code == 403:
-            logger.error("  API TEST: Access forbidden - you are blocked")
-            return False
-        elif test_response.ok:
-            logger.info("  API TEST: Weather API is accessible")
-            return True
-        else:
-            logger.warning(f"  API TEST: Unexpected status {test_response.status_code}")
-            return False
-    except Exception as e:
-        logger.error(f"  API TEST: Failed to connect - {e}")
-        return False
-
-
 def fetch_regional_weather_grid(
     start: Coordinates,
     end: Coordinates,
