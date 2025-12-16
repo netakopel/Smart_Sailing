@@ -35,7 +35,7 @@ CORS(app)  # Enable CORS for local development
 
 def route_to_dict(route):
     """Convert Route object to dictionary for JSON response."""
-    return {
+    result = {
         "name": route.name,
         "type": route.route_type.value,
         "score": route.score,
@@ -63,6 +63,20 @@ def route_to_dict(route):
         "pros": route.pros,
         "cons": route.cons
     }
+    
+    # Include no-go zone violations if present
+    if hasattr(route, 'noGoZoneViolations') and route.noGoZoneViolations:  # type: ignore
+        # Convert snake_case to camelCase for API
+        result["noGoZoneViolations"] = [
+            {
+                "segmentIndex": v.get('segmentIndex') if isinstance(v, dict) else v['segmentIndex'],
+                "heading": v.get('heading') if isinstance(v, dict) else v['heading'],
+                "windAngle": v.get('windAngle') if isinstance(v, dict) else v['windAngle'],
+            }
+            for v in route.noGoZoneViolations  # type: ignore
+        ]
+    
+    return result
 
 
 @app.route('/calculate-routes', methods=['POST', 'OPTIONS'])
@@ -208,13 +222,13 @@ def calculate_routes():
             waypoints_with_weather = fetch_weather_for_waypoints(route.waypoints)
             
             # Check for no-go zones and dangerous conditions
-            # Skip no-go zone check for Isochrone routes (they already avoid no-go zones by design)
+            # (Will be extracted and attached to route after scoring)
             no_go_count = 0
             dangerous_count = 0
             for i, wp in enumerate(waypoints_with_weather):
                 if wp.weather:
-                    # Check if sailing into wind (no-go zone) - skip for Isochrone routes
-                    if i < len(waypoints_with_weather) - 1 and not route.name.startswith("[Isochrone]"):
+                    # Check if sailing into wind (no-go zone) - CHECK FOR ALL ROUTE TYPES
+                    if i < len(waypoints_with_weather) - 1:
                         from route_generator import calculate_bearing
                         from polars import is_in_no_go_zone, calculate_wind_angle
                         
@@ -223,7 +237,7 @@ def calculate_routes():
                         
                         if is_in_no_go_zone(wind_angle, boat.boat_type.value):
                             no_go_count += 1
-                            logger.warning(f"      [NO-GO] Wind angle: {wind_angle:.0f}° (sailing into wind!)")
+                            logger.warning(f"      [NO-GO] Segment {i}->{i+1}: Heading {heading:.0f}°, Wind angle: {wind_angle:.0f}° (sailing into wind!)")
                     
                     # Check dangerous conditions (check for all route types)
                     if wp.weather.wind_speed > boat.max_safe_wind_speed:
@@ -263,7 +277,7 @@ def calculate_routes():
         # Step 3: Score each route
         logger.info("[3] Scoring routes...")
         scored_routes = []
-        for route in routes_with_realistic_times:
+        for route_idx, route in enumerate(routes_with_realistic_times):
             scored = score_route(route, route_request.boat_type, direct_distance)
             danger_indicator = " [DANGER!]" if any("DANGER" in w for w in scored.warnings) else ""
             logger.info(f"   {scored.name}: {scored.score}/100{danger_indicator}")
@@ -271,6 +285,28 @@ def calculate_routes():
                 danger_warnings = [w for w in scored.warnings if 'DANGER' in w]
                 if danger_warnings:
                     logger.warning(f"      -> {danger_warnings[0]}")
+            
+            # Extract NO-GO zone violations from warnings for frontend
+            no_go_violations = []
+            for i, wp in enumerate(scored.waypoints[:-1]):  # All but last waypoint
+                if wp.weather:
+                    from route_generator import calculate_bearing
+                    from polars import is_in_no_go_zone, calculate_wind_angle
+                    
+                    heading = calculate_bearing(wp.position, scored.waypoints[i+1].position)
+                    wind_angle = calculate_wind_angle(heading, wp.weather.wind_direction)
+                    
+                    if is_in_no_go_zone(wind_angle, route_request.boat_type.value):
+                        no_go_violations.append({
+                            'segmentIndex': i,
+                            'heading': heading,
+                            'windAngle': wind_angle
+                        })
+            
+            # Attach violations to scored route
+            if no_go_violations:
+                scored.noGoZoneViolations = no_go_violations  # type: ignore
+            
             scored_routes.append(scored)
         
         # Sort by score (highest first)

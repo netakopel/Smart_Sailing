@@ -43,13 +43,15 @@ function RouteCard({
   index, 
   colorIndex,
   isSelected, 
-  onSelect 
+  onSelect,
+  onNoGoZoneClick
 }: { 
   route: Route; 
   index: number;
   colorIndex: number;
   isSelected: boolean;
   onSelect: () => void;
+  onNoGoZoneClick?: (segmentIndex: number) => void;
 }) {
   const info = getRouteColorClass(colorIndex);
   const isRecommended = index === 0; // First route (highest score) is recommended
@@ -93,7 +95,30 @@ function RouteCard({
 
       {/* Scrollable content area for warnings and pros/cons */}
       <div className={`overflow-y-auto ${isSelected ? 'max-h-48' : 'max-h-32'}`}>
-        {/* Warnings */}
+        {/* No-Go Zone Warnings (special handling) */}
+        {(() => {
+          const violations = (route as any).noGoZoneViolations;
+          return violations && violations.length > 0 && (
+          <div className="mb-3 space-y-1">
+            <p className="text-red-400 text-xs font-semibold mb-1">🔴 NO-GO ZONES ({violations.length})</p>
+            {violations.map((violation: any, i: number) => (
+              <button
+                key={i}
+                onClick={() => {
+                  console.log('Clicked no-go zone:', violation.segmentIndex);
+                  onNoGoZoneClick?.(violation.segmentIndex);
+                }}
+                className="w-full text-left flex items-start gap-2 text-red-300 text-xs bg-red-500/15 hover:bg-red-500/25 rounded p-2 cursor-pointer transition-colors"
+              >
+                <span className="shrink-0">📍</span>
+                <span>Segment {violation.segmentIndex}: Heading {violation.heading.toFixed(0)}° / Wind {violation.windAngle.toFixed(0)}°</span>
+              </button>
+            ))}
+          </div>
+        );
+        })()}
+
+        {/* Regular Warnings */}
         {route.warnings.length > 0 && (
           <div className="mb-3 space-y-1">
             {route.warnings.map((warning, i) => (
@@ -131,7 +156,11 @@ function RouteCard({
   );
 }
 
-export default function RouteCards({ routes, selectedIndex, onSelectRoute }: RouteCardsProps) {
+interface RouteCardsPropsWithCallbacks extends RouteCardsProps {
+  onNoGoZoneClick?: (routeIndex: number, segmentIndex: number) => void;
+}
+
+export default function RouteCards({ routes, selectedIndex, onSelectRoute, onNoGoZoneClick }: RouteCardsPropsWithCallbacks) {
   if (routes.length === 0) {
     return (
       <div className="bg-slate-800/60 rounded-xl p-6 text-center border border-slate-700">
@@ -166,6 +195,7 @@ export default function RouteCards({ routes, selectedIndex, onSelectRoute }: Rou
               colorIndex={originalIndex}
               isSelected={selectedIndex === originalIndex}
               onSelect={() => onSelectRoute(originalIndex)}
+              onNoGoZoneClick={(segmentIndex) => onNoGoZoneClick?.(originalIndex, segmentIndex)}
             />
           </div>
         ))}

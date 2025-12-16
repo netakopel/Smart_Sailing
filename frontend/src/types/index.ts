@@ -22,6 +22,12 @@ export type Waypoint = {
   estimatedArrival: string;
 };
 
+export type NoGoZoneViolation = {
+  segmentIndex: number;  // Which waypoint segment (0->1, 1->2, etc)
+  heading: number;       // Heading of the segment in degrees
+  windAngle: number;     // Wind angle in degrees
+};
+
 export type Route = {
   name: string;
   type: 'direct' | 'port' | 'starboard';
@@ -33,6 +39,7 @@ export type Route = {
   warnings: string[];
   pros: string[];
   cons: string[];
+  noGoZoneViolations?: NoGoZoneViolation[];
 };
 
 export type RouteRequest = {

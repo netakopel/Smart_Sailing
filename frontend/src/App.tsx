@@ -19,6 +19,9 @@ function App() {
   // State for loading/error
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // State for no-go zone highlighting
+  const [highlightedNoGoZone, setHighlightedNoGoZone] = useState<number | null>(null);
 
   // Handle route calculation
   const handleCalculate = async () => {
@@ -36,6 +39,10 @@ function App() {
         boat_type: boatType,
       });
       
+      console.log('Routes received:', response.routes);
+      response.routes.forEach((route: any, idx: number) => {
+        console.log(`Route ${idx}:`, route.name, 'violations:', route.noGoZoneViolations);
+      });
       setRoutes(response.routes);
       // Auto-select the best route (first one after sorting by score)
       if (response.routes.length > 0) {
@@ -124,6 +131,7 @@ function App() {
                 selectedRouteIndex={selectedRouteIndex}
                 onStartPointChange={setStartPoint}
                 onEndPointChange={setEndPoint}
+                highlightedNoGoZone={highlightedNoGoZone}
               />
             </div>
 
@@ -132,6 +140,10 @@ function App() {
               routes={routes}
               selectedIndex={selectedRouteIndex}
               onSelectRoute={setSelectedRouteIndex}
+              onNoGoZoneClick={(routeIndex, segmentIndex) => {
+                setSelectedRouteIndex(routeIndex);
+                setHighlightedNoGoZone(segmentIndex);
+              }}
             />
           </div>
         </div>

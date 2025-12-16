@@ -59,7 +59,7 @@ def score_wind_conditions(
         # NO-GO ZONE: Heading into wind = boat can't sail efficiently or at all
         if wind_angle < 45:
             score -= 90  # MASSIVE penalty - boat essentially can't sail here
-            notes.append(f"NO-GO ZONE: Heading into wind ({wind_angle:.0f}°) - boat can't sail")
+            # Note: NO-GO zone warnings now handled in frontend visualization, not here
         elif wind_angle < 60:
             score -= 50  # Still very poor sailing angle
             notes.append(f"Very close to wind ({wind_angle:.0f}°) - poor performance")

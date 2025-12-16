@@ -92,8 +92,9 @@ class IsochroneState:
 # ============================================================================
 
 # Angular resolution: try headings every N degrees
-ANGULAR_STEP_DEFAULT = 15  # Try 24 directions (360/15)
-ANGULAR_STEP_NEAR_GOAL = 10  # Finer resolution near goal
+# Larger angles = smoother routes with less tacking
+ANGULAR_STEP_DEFAULT = 20  # Try 18 directions (360/20) - reduced from 15 for smoother routes
+ANGULAR_STEP_NEAR_GOAL = 15  # Try 24 directions near goal - reduced from 10
 
 # Grid cell size for pruning (degrees)
 GRID_CELL_SIZE = 0.15  # ~9 nautical miles at mid-latitudes (larger to allow tacking patterns)
@@ -235,6 +236,9 @@ def should_prune_point(
     1. Grid-based: If we've already reached this grid cell faster, prune
     2. Distance-based: If point is much farther from goal than best so far, prune
     
+    Note: No-go zone filtering happens BEFORE point creation in propagate_isochrone(),
+    so no need to check it here.
+    
     Args:
         point: Point to consider
         state: Current algorithm state
@@ -273,6 +277,10 @@ def should_prune_point(
     
     # Update visited grid with this point (it's the best so far for this cell)
     state.visited_grid[cell] = point.time_hours
+    
+    # Note: No-go zone check happens BEFORE points are created in propagate_isochrone(),
+    # so we don't need a redundant check here. Points that reach here have already
+    # been verified to not require sailing in the no-go zone.
     
     # Strategy 2: Distance-based pruning (favor points closer to goal)
     # Update closest distance if this is better
@@ -356,6 +364,10 @@ def reconstruct_path(
         # If we're not exactly at the destination, add final waypoint
         if distance_to_dest > 0.05:  # More than ~50 meters
             logger.info(f"Adding final segment: {distance_to_dest:.2f}nm to exact destination")
+            
+            # Calculate final heading and check if it's in no-go zone
+            final_heading = calculate_bearing(last_position, destination)
+            logger.debug(f"  Final segment heading: {final_heading:.0f}°")
             
             # Use the same approach as during propagation - estimate based on last segment speed
             if len(path_points) >= 2:
@@ -716,7 +728,7 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
         start=request.start,
         end=request.end,
         departure_time=request.departure_time,
-        grid_spacing=20.0,  # 20nm grid spacing (increased from 10nm to reduce API calls)
+        grid_spacing=10.0,  # 10nm grid spacing
         forecast_hours=forecast_hours
     )
     
@@ -725,11 +737,6 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
     # Check if we have weather data
     if not weather_grid.get('grid_points') or not weather_grid.get('weather_data'):
         logger.error("No weather data available - cannot calculate route")
-        logger.error("This could mean:")
-        logger.error("  1. Weather API is blocked/rate-limited (check logs above)")
-        logger.error("  2. API request failed (network issue)")
-        logger.error("  3. No grid points were generated")
-        logger.error("Try again in a few minutes, or check your internet connection.")
         return []
     
     # Calculate primary route (fastest)

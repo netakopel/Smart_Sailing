@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, Marker, Polyline, useMapEvents, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Circle, useMapEvents, Popup } from 'react-leaflet';
 import { Icon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Coordinates, Route } from '../types';
@@ -57,6 +57,7 @@ interface MapProps {
   selectedRouteIndex: number | null;
   onStartPointChange: (coords: Coordinates) => void;
   onEndPointChange: (coords: Coordinates) => void;
+  highlightedNoGoZone?: number | null;  // Waypoint index to highlight
 }
 
 // Component to handle map clicks
@@ -89,6 +90,7 @@ export default function Map({
   selectedRouteIndex,
   onStartPointChange,
   onEndPointChange,
+  highlightedNoGoZone,
 }: MapProps) {
   // Default center: English Channel (good sailing area)
   const defaultCenter: LatLngExpression = [50.0, -2.0];
@@ -173,6 +175,40 @@ export default function Map({
                 opacity={1.0}
               />
             );
+            
+            // Third pass: render no-go zone violations as circles
+            if (route.noGoZoneViolations && route.noGoZoneViolations.length > 0) {
+              route.noGoZoneViolations.forEach((violation) => {
+                const waypoint = route.waypoints[violation.segmentIndex];
+                if (waypoint) {
+                  const position: LatLngExpression = [waypoint.position.lat, waypoint.position.lng];
+                  const isHighlighted = highlightedNoGoZone === violation.segmentIndex;
+                  
+                  polylines.push(
+                    <Circle
+                      key={`no-go-${selectedRouteIndex}-${violation.segmentIndex}`}
+                      center={position}
+                      radius={isHighlighted ? 2000 : 500}  // 2km vs 500m
+                      pathOptions={{
+                        color: '#ff0000',
+                        fillColor: '#ff0000',
+                        fillOpacity: isHighlighted ? 0.6 : 0.3,
+                        weight: isHighlighted ? 3 : 1,
+                      }}
+                    >
+                      <Popup>
+                        <div className="bg-slate-900 text-white rounded p-2">
+                          <p className="font-bold text-red-500">⚠️ NO-GO ZONE</p>
+                          <p className="text-sm">Segment {violation.segmentIndex}</p>
+                          <p className="text-sm">Heading: {violation.heading.toFixed(0)}°</p>
+                          <p className="text-sm">Wind Angle: {violation.windAngle.toFixed(0)}°</p>
+                        </div>
+                      </Popup>
+                    </Circle>
+                  );
+                }
+              });
+            }
           }
           
           return polylines;
