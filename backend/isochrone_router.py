@@ -160,21 +160,15 @@ def get_adaptive_time_step(distance_to_goal: float) -> float:
     """
     Select time step based on distance to goal.
     
-    Closer to goal = smaller steps for accuracy.
-    Far from goal = larger steps for speed.
+    Using fixed 0.5h time steps for consistent propagation throughout the route.
     
     Args:
         distance_to_goal: Distance to destination in nautical miles
         
     Returns:
-        Time step in hours
+        Time step in hours (always 0.5)
     """
-    if distance_to_goal > 50:
-        return TIME_STEP_FAR
-    elif distance_to_goal > 20:
-        return TIME_STEP_MEDIUM
-    else:
-        return TIME_STEP_CLOSE
+    return 0.5  # Fixed 0.5h time step for all legs
 
 
 def get_angular_step(distance_to_goal: float) -> int:
@@ -260,17 +254,16 @@ def should_prune_point(
         previous_best_time = state.visited_grid[cell]
         
         # Be progressively more lenient based on exploration stage
-        # Early on (< 50 cells), we're still discovering tacking patterns - be selective
-        # Medium (50-150 cells), moderate filtering
-        # Late (> 150 cells), strict filtering
+        # Early on, be lenient to allow diverse route discovery
+        # Later, apply more selective filtering
         if len(state.visited_grid) < 20:
-            time_tolerance = 0.3  # Allow 30% slower routes in very early exploration (was 100%)
+            time_tolerance = 0.5  # Allow 50% slower routes in very early exploration
         elif len(state.visited_grid) < 50:
-            time_tolerance = 0.2  # Allow 20% slower routes in early exploration (was 50%)
+            time_tolerance = 0.35  # Allow 35% slower routes in early exploration
         elif len(state.visited_grid) < 150:
-            time_tolerance = 0.15  # Allow 15% slower in middle phase (was 20%)
+            time_tolerance = 0.25  # Allow 25% slower in middle phase
         else:
-            time_tolerance = 0.08  # Allow 8% tolerance when well-explored (was 10%)
+            time_tolerance = 0.15  # Allow 15% tolerance when well-explored
         
         if point.time_hours > previous_best_time * (1 + time_tolerance):
             # Current point is significantly slower - prune it
@@ -283,35 +276,36 @@ def should_prune_point(
     # so we don't need a redundant check here. Points that reach here have already
     # been verified to not require sailing in the no-go zone.
     
-    # Strategy 2: Distance-based pruning (favor points closer to goal)
-    # Update closest distance if this is better
+    # Strategy 2: Distance-based pruning (DISABLED - allow all distances)
+    # Update closest distance if this is better (for logging only)
     if distance_to_goal < state.closest_distance_to_goal:
         state.closest_distance_to_goal = distance_to_goal
     
-    # Distance-based pruning that favors progress while allowing tacking patterns
-    # Be more lenient than before to avoid pruning away all routes
+    # NOTE: Distance-based pruning has been disabled to allow the algorithm
+    # to explore all viable paths without eliminating routes that take longer distances.
+    # The isochrone size is controlled by the MAX_ISOCHRONE_SIZE limit and
+    # grid-based pruning instead.
     
-    # Calculate how much we've explored
-    exploration_level = len(state.visited_grid)
-    
-    if exploration_level < 50:
-        # Very early: allow routes that go somewhat off course (for discovering tacking patterns)
-        # But be more selective than before to avoid explosion
-        if distance_to_goal > state.closest_distance_to_goal * 5.0:  # was 8.0
-            return True
-    elif exploration_level < 150:
-        # Early-medium exploration: selective pruning
-        if distance_to_goal > state.closest_distance_to_goal * 3.0:  # was 4.0
-            return True
-    elif state.closest_distance_to_goal > 30:
-        # Well-explored, far from goal: more aggressive pruning
-        if distance_to_goal > state.closest_distance_to_goal * 2.5:  # was 3.0
-            return True
-    elif state.closest_distance_to_goal > 10:
-        # Well-explored, medium distance: even tighter pruning
-        if distance_to_goal > state.closest_distance_to_goal * 2.0:  # was 2.5
-            return True
-    # else: Near goal (<10nm): minimal distance-based pruning (up to 2.0x)
+    # # OLD distance-based pruning logic (now disabled):
+    # # Calculate how much we've explored
+    # exploration_level = len(state.visited_grid)
+    # 
+    # if exploration_level < 50:
+    #     # Very early: allow routes that go somewhat off course (for discovering tacking patterns)
+    #     if distance_to_goal > state.closest_distance_to_goal * 8.0:
+    #         return True
+    # elif exploration_level < 150:
+    #     # Early-medium exploration: selective pruning
+    #     if distance_to_goal > state.closest_distance_to_goal * 4.0:
+    #         return True
+    # elif state.closest_distance_to_goal > 30:
+    #     # Well-explored, far from goal: more aggressive pruning
+    #     if distance_to_goal > state.closest_distance_to_goal * 3.0:
+    #         return True
+    # elif state.closest_distance_to_goal > 10:
+    #     # Well-explored, medium distance: even tighter pruning
+    #     if distance_to_goal > state.closest_distance_to_goal * 2.5:
+    #         return True
     
     return False
 
