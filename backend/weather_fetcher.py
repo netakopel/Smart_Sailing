@@ -388,6 +388,18 @@ def fetch_regional_weather_grid(
     min_lng = min(start.lng, end.lng) - 0.5
     max_lng = max(start.lng, end.lng) + 0.5
     
+    # Normalize longitudes to [-180, 180] range
+    def normalize_lng(lng):
+        """Normalize longitude to [-180, 180] range"""
+        while lng > 180:
+            lng -= 360
+        while lng < -180:
+            lng += 360
+        return lng
+    
+    min_lng = normalize_lng(min_lng)
+    max_lng = normalize_lng(max_lng)
+    
     # Convert grid spacing from nautical miles to degrees
     # 1 degree latitude ≈ 60 nautical miles
     # Longitude varies by latitude, use average latitude for conversion
@@ -401,7 +413,7 @@ def fetch_regional_weather_grid(
     while lat <= max_lat:
         lng = min_lng
         while lng <= max_lng:
-            grid_points.append((round(lat, 4), round(lng, 4)))
+            grid_points.append((round(lat, 4), round(normalize_lng(lng), 4)))
             lng += lng_spacing
         lat += lat_spacing
     
