@@ -1,7 +1,8 @@
-import { MapContainer, TileLayer, Marker, Polyline, Circle, useMapEvents, Popup } from 'react-leaflet';
+import { useState } from 'react';
+import { MapContainer, TileLayer, Marker, Polyline, Circle, CircleMarker, useMapEvents, Popup } from 'react-leaflet';
 import { Icon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { Coordinates, Route } from '../types';
+import type { Coordinates, Route, WeatherGrid } from '../types';
 
 // Fix for default marker icons in Leaflet with bundlers
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -58,6 +59,7 @@ interface MapProps {
   onStartPointChange: (coords: Coordinates) => void;
   onEndPointChange: (coords: Coordinates) => void;
   highlightedNoGoZone?: number | null;  // Waypoint index to highlight
+  weatherGrid?: WeatherGrid | null;  // Weather grid points for visualization
 }
 
 // Component to handle map clicks
@@ -91,7 +93,11 @@ export default function Map({
   onStartPointChange,
   onEndPointChange,
   highlightedNoGoZone,
+  weatherGrid,
 }: MapProps) {
+  // State for showing/hiding weather grid
+  const [showGrid, setShowGrid] = useState(true);
+  
   // Default center: English Channel (good sailing area)
   const defaultCenter: LatLngExpression = [50.0, -2.0];
   const defaultZoom = 7;
@@ -102,7 +108,19 @@ export default function Map({
   };
 
   return (
-    <div className="h-full w-full rounded-xl overflow-hidden shadow-2xl border border-slate-700">
+    <div className="h-full w-full rounded-xl overflow-hidden shadow-2xl border border-slate-700 relative">
+      {/* Toggle button for weather grid */}
+      {weatherGrid && weatherGrid.gridPoints && weatherGrid.gridPoints.length > 0 && (
+        <button
+          onClick={() => setShowGrid(!showGrid)}
+          className="absolute top-2 right-2 z-[1000] bg-slate-800/90 hover:bg-slate-700 text-white px-3 py-2 rounded-lg shadow-lg border border-slate-600 text-sm flex items-center gap-2 transition-colors"
+          title={showGrid ? 'Hide weather grid points' : 'Show weather grid points'}
+        >
+          <span>🌐</span>
+          <span>{showGrid ? 'Hide Grid' : 'Show Grid'}</span>
+          <span className="text-xs text-slate-400">({weatherGrid.gridPoints.length})</span>
+        </button>
+      )}
       <MapContainer
         center={defaultCenter}
         zoom={defaultZoom}
@@ -213,6 +231,21 @@ export default function Map({
           
           return polylines;
         })()}
+
+        {/* Weather grid points - show as small circle markers */}
+        {showGrid && weatherGrid && weatherGrid.gridPoints && weatherGrid.gridPoints.map((point, index) => (
+          <CircleMarker
+            key={`grid-${index}`}
+            center={[point.lat, point.lng]}
+            radius={2}
+            pathOptions={{
+              color: '#60a5fa',
+              fillColor: '#60a5fa',
+              fillOpacity: 0.4,
+              weight: 1,
+            }}
+          />
+        ))}
       </MapContainer>
     </div>
   );

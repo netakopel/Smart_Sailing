@@ -4,7 +4,7 @@ import RouteForm from './components/RouteForm';
 import RouteCards from './components/RouteCards';
 import WeatherPanel from './components/WeatherPanel';
 import { calculateRoutes } from './services/api';
-import type { Coordinates, Route, BoatType } from './types';
+import type { Coordinates, Route, BoatType, WeatherGrid } from './types';
 
 function App() {
   // State for user inputs
@@ -15,6 +15,7 @@ function App() {
   // State for API response
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState<number | null>(null);
+  const [weatherGrid, setWeatherGrid] = useState<WeatherGrid | null>(null);
   
   // State for loading/error
   const [loading, setLoading] = useState(false);
@@ -44,6 +45,7 @@ function App() {
         console.log(`Route ${idx}:`, route.name, 'violations:', route.noGoZoneViolations);
       });
       setRoutes(response.routes);
+      setWeatherGrid(response.weatherGrid || null);
       // Auto-select the best route (first one after sorting by score)
       if (response.routes.length > 0) {
         const bestRouteIndex = response.routes.reduce(
@@ -66,6 +68,7 @@ function App() {
     setRoutes([]);
     setSelectedRouteIndex(null);
     setError(null);
+    setWeatherGrid(null);
   };
 
   // Get selected route for weather panel
@@ -132,6 +135,7 @@ function App() {
                 onStartPointChange={setStartPoint}
                 onEndPointChange={setEndPoint}
                 highlightedNoGoZone={highlightedNoGoZone}
+                weatherGrid={weatherGrid}
               />
             </div>
 

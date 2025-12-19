@@ -49,9 +49,20 @@ export type RouteRequest = {
   departure_time?: string;
 };
 
+export type WeatherGrid = {
+  gridPoints: Coordinates[];
+  bounds?: {
+    min_lat?: number;
+    max_lat?: number;
+    min_lng?: number;
+    max_lng?: number;
+  };
+};
+
 export type RouteResponse = {
   routes: Route[];
   calculatedAt: string;
+  weatherGrid?: WeatherGrid;
 };
 
 export type BoatType = 'sailboat' | 'motorboat' | 'catamaran';

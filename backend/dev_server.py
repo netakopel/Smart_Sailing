@@ -133,6 +133,7 @@ def calculate_routes():
         # Step 1: Generate routes based on selected algorithm
         logger.info(f"[1] Generating routes ({algorithm})...")
         generated_routes = []
+        weather_grid_metadata = {}  # Initialize for weather grid visualization
         
         # Handle deprecated algorithms
         if algorithm == "naive" or algorithm == "hybrid":
@@ -151,8 +152,9 @@ def calculate_routes():
         #     
         if algorithm == "isochrone":
             # Optimal isochrone algorithm
+            weather_grid_metadata = {}
             try:
-                generated_routes = generate_isochrone_routes(route_request)
+                generated_routes, weather_grid_metadata = generate_isochrone_routes(route_request)
                 logger.info(f"   Generated {len(generated_routes)} isochrone routes")
                 if not generated_routes:
                     logger.warning("   Isochrone algorithm returned 0 routes!")
@@ -163,6 +165,7 @@ def calculate_routes():
                 # logger.info("   Falling back to naive routes...")
                 # generated_routes = generate_routes(route_request)
                 generated_routes = []  # No fallback - only isochrone
+                weather_grid_metadata = {}
             
         elif algorithm == "all":
             # Run all algorithms and combine results
@@ -190,12 +193,14 @@ def calculate_routes():
             # time.sleep(3)
             
             # Run isochrone routes
+            weather_grid_metadata = {}
             try:
-                isochrone = generate_isochrone_routes(route_request)
+                isochrone, weather_grid_metadata = generate_isochrone_routes(route_request)
                 logger.info(f"   - Isochrone: {len(isochrone)} routes")
             except Exception as e:
                 logger.error(f"   - Isochrone: FAILED ({e})")
                 isochrone = []
+                weather_grid_metadata = {}
             
             # Rename routes to show which algorithm generated them
             # for r in naive:
@@ -335,6 +340,18 @@ def calculate_routes():
             "routes": [route_to_dict(r) for r in top_routes],
             "calculatedAt": datetime.now().isoformat()
         }
+        
+        # Add weather grid metadata if available (for visualization)
+        if weather_grid_metadata and weather_grid_metadata.get('grid_points'):
+            # Convert grid_points from tuples to coordinate objects
+            response_body["weatherGrid"] = {
+                "gridPoints": [
+                    {"lat": lat, "lng": lng}
+                    for lat, lng in weather_grid_metadata.get('grid_points', [])
+                ],
+                "bounds": weather_grid_metadata.get('bounds', {})
+            }
+            logger.info(f"   Including weather grid: {len(response_body['weatherGrid']['gridPoints'])} points")
         
         logger.info(f"[OK] Done! Returning {len(scored_routes)} scored routes")
         

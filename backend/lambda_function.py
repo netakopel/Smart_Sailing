@@ -118,12 +118,14 @@ def lambda_handler(event, context):
         
         # Step 1: Generate route options using ISOCHRONE algorithm
         logger.info("[ALGORITHM] Using Isochrone optimal routing")
-        generated_routes = generate_isochrone_routes(request)
+        weather_grid_metadata = {}  # Initialize for weather grid visualization
+        generated_routes, weather_grid_metadata = generate_isochrone_routes(request)
         
         # If isochrone fails or returns no routes, fallback to naive
         if not generated_routes:
             logger.warning("[FALLBACK] Isochrone returned no routes, using naive routes")
             generated_routes = generate_routes(request)
+            weather_grid_metadata = {}
         
         direct_distance = calculate_distance(request.start, request.end)
         
@@ -148,6 +150,16 @@ def lambda_handler(event, context):
             "routes": [route_to_dict(r) for r in scored_routes],
             "calculatedAt": datetime.now().isoformat()
         }
+        
+        # Add weather grid metadata if available (for visualization)
+        if weather_grid_metadata and weather_grid_metadata.get('grid_points'):
+            response_body["weatherGrid"] = {
+                "gridPoints": [
+                    {"lat": lat, "lng": lng}
+                    for lat, lng in weather_grid_metadata.get('grid_points', [])
+                ],
+                "bounds": weather_grid_metadata.get('bounds', {})
+            }
         
         return {
             "statusCode": 200,

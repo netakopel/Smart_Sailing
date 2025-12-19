@@ -717,7 +717,7 @@ def calculate_isochrone_route(
 # PUBLIC API
 # ============================================================================
 
-def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
+def generate_isochrone_routes(request: RouteRequest) -> tuple[List[GeneratedRoute], dict]:
     """
     Generate optimal sailing routes using isochrone method.
     
@@ -730,7 +730,8 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
         request: Route request with start, end, boat_type, departure_time
         
     Returns:
-        List of GeneratedRoute objects (1-3 routes)
+        Tuple of (List of GeneratedRoute objects (1-3 routes), weather_grid_metadata dict)
+        weather_grid_metadata contains: grid_points (list of (lat, lng) tuples), bounds
     """
     logger.info("="*60)
     logger.info("ISOCHRONE ROUTE GENERATION")
@@ -756,14 +757,14 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
     # Check if we have weather data
     if not weather_grid.get('grid_points') or not weather_grid.get('weather_data'):
         logger.error("No weather data available - cannot calculate route")
-        return []
+        return [], {}
     
     # Calculate primary route (fastest)
     primary_route = calculate_isochrone_route(request, weather_grid)
     
     if primary_route is None:
         logger.warning("No valid route found")
-        return []
+        return [], {}
     
     routes = [primary_route]
     
@@ -775,7 +776,13 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
     logger.info(f"Generated {len(routes)} isochrone route(s)")
     logger.info("="*60)
     
-    return routes
+    # Extract metadata for frontend visualization
+    weather_grid_metadata = {
+        'grid_points': weather_grid.get('grid_points', []),
+        'bounds': weather_grid.get('bounds', {})
+    }
+    
+    return routes, weather_grid_metadata
 
 
 
