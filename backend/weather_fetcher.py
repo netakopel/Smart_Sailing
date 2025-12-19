@@ -354,7 +354,7 @@ def fetch_regional_weather_grid(
     departure_time: str,
     grid_spacing: float = 10.0,
     forecast_hours: int = 50,
-    corridor_width_nm: float = 100.0
+    corridor_width_nm: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Fetch weather data for a grid of points covering the route area.
@@ -368,7 +368,9 @@ def fetch_regional_weather_grid(
         departure_time: ISO 8601 departure time
         grid_spacing: Distance between grid points in nautical miles (default: 10nm)
         forecast_hours: How many hours of forecast to fetch (default: 50 hours)
-        corridor_width_nm: Total width of the weather corridor in nautical miles (default: 100nm)
+        corridor_width_nm: Total width of the weather corridor in nautical miles.
+                          [TESTING: Currently IGNORED - always calculated as 1/3 of route distance
+                          with min 10nm and max 150nm bounds]
         
     Returns:
         Dictionary with:
@@ -382,15 +384,6 @@ def fetch_regional_weather_grid(
           Formula: forecast_hours = ceil(estimated_route_duration_hours * 1.5)
           The 1.5 multiplier provides buffer for slower-than-expected progress.
     """
-    logger.warning(f"  Fetching regional weather grid (spacing: {grid_spacing}nm, corridor: {corridor_width_nm}nm)...")
-    
-    # Calculate bounding box with padding based on corridor width
-    # We pad by half corridor width (converted to degrees) + small safety buffer
-    padding_deg = (corridor_width_nm / 60.0) / 2.0 + 0.3
-    
-    min_lat = min(start.lat, end.lat) - padding_deg
-    max_lat = max(start.lat, end.lat) + padding_deg
-    
     # Normalize longitudes to [-180, 180] range
     def normalize_lng(lng):
         """Normalize longitude to [-180, 180] range"""
@@ -400,60 +393,102 @@ def fetch_regional_weather_grid(
             lng += 360
         return lng
     
-    # Calculate longitude padding based on average latitude
+    # Calculate route parameters
     avg_lat = (start.lat + end.lat) / 2
     cos_lat = math.cos(math.radians(avg_lat))
-    lng_padding_deg = padding_deg / max(0.1, cos_lat)
     
-    min_lng = min(start.lng, end.lng) - lng_padding_deg
-    max_lng = max(start.lng, end.lng) + lng_padding_deg
+    # Calculate route distance and direction FIRST (needed for dynamic corridor width)
+    # Use simple projection for distance calculations
+    start_x = start.lng * cos_lat
+    start_y = start.lat
+    end_x = end.lng * cos_lat
+    end_y = end.lat
     
-    min_lng = normalize_lng(min_lng)
-    max_lng = normalize_lng(max_lng)
+    dx = end_x - start_x
+    dy = end_y - start_y
+    route_length_nm = math.sqrt(dx*dx + dy*dy) * 60.0
     
-    # Convert grid spacing from nautical miles to degrees
-    lat_spacing = grid_spacing / 60.0
-    lng_spacing = grid_spacing / (60.0 * max(0.1, cos_lat))
+    # Calculate corridor width dynamically from route distance (TESTING: ignoring passed parameter)
+    # Use 1/3 of route distance, with reasonable bounds
+    corridor_width_nm = route_length_nm / 3.0
+    # Apply bounds: minimum 10nm (for short routes), maximum 150nm (for very long routes)
+    corridor_width_nm = max(10.0, min(150.0, corridor_width_nm))
     
-    # Pre-calculate rhumb line segment for corridor filtering
-    # We use a simple projection for distance calculations
-    ax, ay = start.lng * cos_lat, start.lat
-    bx, by = end.lng * cos_lat, end.lat
-    dx, dy = bx - ax, by - ay
-    line_len_sq = dx*dx + dy*dy
     corridor_radius_nm = corridor_width_nm / 2.0
     
-    # Generate grid points within the corridor
-    grid_points = []
-    total_candidates = 0
-    lat = min_lat
-    while lat <= max_lat:
-        lng = min_lng
-        while lng <= max_lng:
-            total_candidates += 1
-            norm_lng = normalize_lng(lng)
-            
-            # Corridor check: distance from point (norm_lng, lat) to segment (start, end)
-            px, py = norm_lng * cos_lat, lat
-            
-            if line_len_sq > 0:
-                t = ((px - ax) * dx + (py - ay) * dy) / line_len_sq
-                t = max(0, min(1, t))
-                nx, ny = ax + t * dx, ay + t * dy
-                dist_deg = math.sqrt((px - nx)**2 + (py - ny)**2)
-            else:
-                dist_deg = math.sqrt((px - ax)**2 + (py - ay)**2)
-            
-            # If point is within the corridor radius, keep it
-            if dist_deg * 60.0 <= corridor_radius_nm:
-                grid_points.append((round(lat, 4), round(norm_lng, 4)))
-            
-            lng += lng_spacing
-        lat += lat_spacing
+    logger.warning(f"  Fetching regional weather grid (spacing: {grid_spacing}nm, corridor: {corridor_width_nm:.1f}nm [auto: 1/3 of {route_length_nm:.1f}nm route], route: {route_length_nm:.1f}nm)...")
     
-    reduction = (1 - len(grid_points) / total_candidates) * 100 if total_candidates > 0 else 0
-    logger.warning(f"  Grid: {len(grid_points)} points (filtered from {total_candidates} rectangle points, -{reduction:.1f}%)")
-    logger.warning(f"  Area: {max_lat-min_lat:.2f}\u00b0 lat \u00d7 {max_lng-min_lng:.2f}\u00b0 lng")
+    # Normalize direction vector
+    route_len_deg = math.sqrt(dx*dx + dy*dy)
+    if route_len_deg > 0:
+        unit_dx = dx / route_len_deg
+        unit_dy = dy / route_len_deg
+    else:
+        # Start and end are the same point
+        unit_dx, unit_dy = 0, 0
+    
+    # Perpendicular direction (for corridor width)
+    perp_dx = -unit_dy
+    perp_dy = unit_dx
+    
+    # Generate grid points along the route segment only (not before start or after end)
+    grid_points = []
+    
+    # Calculate number of points along the route
+    num_points_along_route = max(2, int(math.ceil(route_length_nm / grid_spacing)) + 1)
+    
+    # Calculate number of points across the corridor
+    num_points_across = max(1, int(math.ceil(corridor_width_nm / grid_spacing)))
+    if num_points_across % 2 == 0:
+        num_points_across += 1  # Make odd so we have center line
+    
+    # Generate points along the route
+    for i in range(num_points_along_route):
+        # Parameter t from 0 to 1 along the route
+        t = i / (num_points_along_route - 1) if num_points_along_route > 1 else 0
+        
+        # Point along the route centerline
+        center_x = start_x + t * dx
+        center_y = start_y + t * dy
+        center_lng = center_x / cos_lat
+        center_lat = center_y
+        
+        # Generate points perpendicular to the route
+        for j in range(num_points_across):
+            # Offset from center (-corridor_radius to +corridor_radius)
+            offset_ratio = (j / (num_points_across - 1) - 0.5) * 2.0 if num_points_across > 1 else 0
+            offset_nm = offset_ratio * corridor_radius_nm
+            
+            # Convert offset from nautical miles to degrees
+            offset_deg = offset_nm / 60.0
+            
+            # Calculate perpendicular offset
+            offset_x = perp_dx * offset_deg
+            offset_y = perp_dy * offset_deg
+            
+            # Final point coordinates
+            point_lng = normalize_lng((center_x + offset_x) / cos_lat)
+            point_lat = center_y + offset_y
+            
+            grid_points.append((round(point_lat, 4), round(point_lng, 4)))
+    
+    # Calculate bounding box for the generated points
+    if grid_points:
+        lats = [lat for lat, lng in grid_points]
+        lngs = [lng for lat, lng in grid_points]
+        min_lat = min(lats)
+        max_lat = max(lats)
+        min_lng = min(lngs)
+        max_lng = max(lngs)
+    else:
+        # Fallback if no points generated
+        min_lat = min(start.lat, end.lat)
+        max_lat = max(start.lat, end.lat)
+        min_lng = min(start.lng, end.lng)
+        max_lng = max(start.lng, end.lng)
+    
+    logger.warning(f"  Grid: {len(grid_points)} points (along route: {num_points_along_route}, across: {num_points_across})")
+    logger.warning(f"  Route length: {route_length_nm:.1f}nm, Area: {max_lat-min_lat:.2f}\u00b0 lat \u00d7 {max_lng-min_lng:.2f}\u00b0 lng")
     
     # Parse departure time and calculate time range
     # NOTE: forecast_hours should be calculated based on route duration to minimize API calls!
