@@ -249,26 +249,26 @@ def should_prune_point(
     cell_size = get_adaptive_grid_cell_size(distance_to_goal, len(state.visited_grid))
     cell = get_grid_cell(point.position, cell_size)
     
-    if cell in state.visited_grid:
-        # We've been to this grid cell before
-        previous_best_time = state.visited_grid[cell]
+    # if cell in state.visited_grid:
+    #     # We've been to this grid cell before
+    #     previous_best_time = state.visited_grid[cell]
         
-        # Be progressively more lenient based on exploration stage
-        # Early on, be lenient to allow diverse route discovery
-        # Later, apply more selective filtering
-        # IMPORTANT: Use LARGER tolerances to prevent isochrone collapse
-        if len(state.visited_grid) < 20:
-            time_tolerance = 0.75  # Allow 75% slower routes in very early exploration (was 0.5)
-        elif len(state.visited_grid) < 50:
-            time_tolerance = 0.60  # Allow 60% slower routes in early exploration (was 0.35)
-        elif len(state.visited_grid) < 150:
-            time_tolerance = 0.45  # Allow 45% slower in middle phase (was 0.25)
-        else:
-            time_tolerance = 0.30  # Allow 30% tolerance when well-explored (was 0.15)
+    #     # Be progressively more lenient based on exploration stage
+    #     # Early on, be lenient to allow diverse route discovery
+    #     # Later, apply more selective filtering
+    #     # IMPORTANT: Use LARGER tolerances to prevent isochrone collapse
+    #     if len(state.visited_grid) < 20:
+    #         time_tolerance = 0.75  # Allow 75% slower routes in very early exploration (was 0.5)
+    #     elif len(state.visited_grid) < 50:
+    #         time_tolerance = 0.60  # Allow 60% slower routes in early exploration (was 0.35)
+    #     elif len(state.visited_grid) < 150:
+    #         time_tolerance = 0.45  # Allow 45% slower in middle phase (was 0.25)
+    #     else:
+    #         time_tolerance = 0.30  # Allow 30% tolerance when well-explored (was 0.15)
         
-        if point.time_hours > previous_best_time * (1 + time_tolerance):
-            # Current point is significantly slower - prune it
-            return True
+    #     if point.time_hours > previous_best_time * (1 + time_tolerance):
+    #         # Current point is significantly slower - prune it
+    #         return True
     
     # Update visited grid with this point (it's the best so far for this cell)
     state.visited_grid[cell] = point.time_hours
@@ -554,7 +554,7 @@ def propagate_isochrone(
     # Always favor points closer to goal by sorting and limiting isochrone size
     if len(next_isochrone) > MAX_ISOCHRONE_GROWTH_WARNING:
         # Warn if isochrone is exploding (suggests pruning isn't aggressive enough)
-        logger.warning(f"  ⚠️  Isochrone explosion detected: {len(next_isochrone)} points (threshold: {MAX_ISOCHRONE_GROWTH_WARNING})")
+        logger.warning(f"   Isochrone explosion detected: {len(next_isochrone)} points (threshold: {MAX_ISOCHRONE_GROWTH_WARNING})")
         logger.warning(f"      This suggests pruning logic is too lenient. Consider adjusting time_tolerance or pruning strategies.")
     
     if len(next_isochrone) > max_size:
@@ -778,36 +778,4 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
     return routes
 
 
-# ============================================================================
-# TESTING / DEBUG
-# ============================================================================
-
-if __name__ == "__main__":
-    logger.info("Isochrone Router - Test Mode")
-    logger.info("=" * 60)
-    
-    # Test case: Southampton to Cherbourg (classic sailing route)
-    from models import RouteRequest, Coordinates, BoatType
-    
-    test_request = RouteRequest(
-        start=Coordinates(lat=50.9, lng=-1.4),  # Southampton
-        end=Coordinates(lat=49.6, lng=-1.6),    # Cherbourg
-        boat_type=BoatType.SAILBOAT,
-        departure_time="2024-01-15T08:00:00Z"
-    )
-    
-    logger.info("Test Route: Southampton -> Cherbourg")
-    logger.info(f"Distance: {calculate_distance(test_request.start, test_request.end):.1f} nm")
-    
-    routes = generate_isochrone_routes(test_request)
-    
-    if routes:
-        logger.info(f"[SUCCESS] Generated {len(routes)} route(s)")
-        for i, route in enumerate(routes, 1):
-            logger.info(f"Route {i}: {route.name}")
-            logger.info(f"  Distance: {route.total_distance:.1f} nm")
-            logger.info(f"  Time: {route.estimated_hours:.1f} hours")
-            logger.info(f"  Waypoints: {len(route.waypoints)}")
-    else:
-        logger.error("[FAILED] No routes generated")
 
