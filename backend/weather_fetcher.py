@@ -32,6 +32,16 @@ WEATHER_APIS = {
     'gfs': "https://api.open-meteo.com/v1/gfs",          # US NOAA model - best for Americas
 }
 
+# Corridor width calculation constant
+CORRIDOR_WIDTH_RATIO = 1.0 / 3.0  # Corridor width is 1/3 of route distance
+
+# API rate limits for grid optimization
+MAX_API_CALLS_PER_MINUTE = 600  # Open-Meteo rate limit
+API_CALLS_PER_CHUNK = 2  # Weather + Marine API calls per chunk
+MAX_POINTS_PER_BATCH = 100  # Maximum locations per API request
+MAX_CHUNKS_PER_MINUTE = MAX_API_CALLS_PER_MINUTE // API_CALLS_PER_CHUNK  # 300 chunks/minute
+MAX_POINTS_PER_MINUTE = MAX_CHUNKS_PER_MINUTE * MAX_POINTS_PER_BATCH  # 30,000 points/minute
+
 
 def kmh_to_knots(kmh: float) -> float:
     """Convert kilometers/hour to knots (the API returns km/h by default)"""
@@ -315,6 +325,48 @@ def summarize_weather(waypoints: List[Waypoint]) -> dict:
 # Regional Weather Grid Functions (Phase 5A - Smart Routing)
 # ============================================================================
 
+def calculate_optimal_grid_spacing(
+    route_length_nm: float,
+    corridor_width_nm: float,
+    max_points: int = MAX_POINTS_PER_MINUTE
+) -> float:
+    """
+    Calculate optimal grid spacing based on route area and API rate limits.
+    
+    This maximizes the number of grid points we can fetch within rate limits
+    while maintaining good coverage of the route corridor.
+    
+    Args:
+        route_length_nm: Length of route in nautical miles
+        corridor_width_nm: Width of corridor in nautical miles
+        max_points: Maximum number of points we can fetch (default: rate limit)
+        
+    Returns:
+        Optimal grid spacing in nautical miles (minimum 2nm, maximum 50nm)
+    """
+    # Calculate route area (approximate, in square nautical miles)
+    route_area = route_length_nm * corridor_width_nm
+    
+    if route_area <= 0:
+        return 10.0  # Default spacing
+    
+    # Calculate spacing to fit max_points in the area
+    # For a grid: points = (length/spacing + 1) * (width/spacing + 1)
+    # Approximate: points ≈ (length * width) / spacing^2
+    # So: spacing^2 ≈ (length * width) / points
+    # spacing ≈ sqrt((length * width) / points)
+    
+    optimal_spacing_squared = route_area / max_points
+    optimal_spacing = math.sqrt(optimal_spacing_squared)
+    
+    # Apply reasonable bounds
+    # Minimum 2nm for very short routes (ensures at least some detail)
+    # Maximum 50nm for very long routes (prevents excessive points)
+    optimal_spacing = max(2.0, min(50.0, optimal_spacing))
+    
+    return optimal_spacing
+
+
 def calculate_forecast_hours_needed(distance_nm: float, avg_boat_speed: float, buffer_multiplier: float = 1.5) -> int:
     """
     Calculate how many hours of weather forecast are needed for a route.
@@ -352,9 +404,7 @@ def fetch_regional_weather_grid(
     start: Coordinates,
     end: Coordinates,
     departure_time: str,
-    grid_spacing: float = 10.0,
-    forecast_hours: int = 50,
-    corridor_width_nm: Optional[float] = None
+    forecast_hours: int = 50
 ) -> Dict[str, Any]:
     """
     Fetch weather data for a grid of points covering the route area.
@@ -362,15 +412,14 @@ def fetch_regional_weather_grid(
     This is used by wind routing algorithms to get weather for arbitrary points
     along potential routes, not just pre-defined waypoints.
     
+    The corridor width is automatically calculated as CORRIDOR_WIDTH_RATIO (1/3) of the
+    route distance, with bounds of 10nm minimum and 150nm maximum.
+    
     Args:
         start: Starting coordinates
         end: Ending coordinates
         departure_time: ISO 8601 departure time
-        grid_spacing: Distance between grid points in nautical miles (default: 10nm)
         forecast_hours: How many hours of forecast to fetch (default: 50 hours)
-        corridor_width_nm: Total width of the weather corridor in nautical miles.
-                          [TESTING: Currently IGNORED - always calculated as 1/3 of route distance
-                          with min 10nm and max 150nm bounds]
         
     Returns:
         Dictionary with:
@@ -408,15 +457,19 @@ def fetch_regional_weather_grid(
     dy = end_y - start_y
     route_length_nm = math.sqrt(dx*dx + dy*dy) * 60.0
     
-    # Calculate corridor width dynamically from route distance (TESTING: ignoring passed parameter)
-    # Use 1/3 of route distance, with reasonable bounds
-    corridor_width_nm = route_length_nm / 3.0
+    # Calculate corridor width dynamically from route distance
+    # Use CORRIDOR_WIDTH_RATIO (1/3) of route distance, with reasonable bounds
+    corridor_width_nm = route_length_nm * CORRIDOR_WIDTH_RATIO
     # Apply bounds: minimum 10nm (for short routes), maximum 150nm (for very long routes)
     corridor_width_nm = max(10.0, min(150.0, corridor_width_nm))
     
     corridor_radius_nm = corridor_width_nm / 2.0
     
-    logger.warning(f"  Fetching regional weather grid (spacing: {grid_spacing}nm, corridor: {corridor_width_nm:.1f}nm [auto: 1/3 of {route_length_nm:.1f}nm route], route: {route_length_nm:.1f}nm)...")
+    # Calculate optimal grid spacing based on route area and API rate limits
+    # This maximizes point density while staying within 600 calls/minute limit
+    grid_spacing = calculate_optimal_grid_spacing(route_length_nm, corridor_width_nm)
+    logger.warning(f"  Auto-calculated optimal grid spacing: {grid_spacing:.1f}nm (based on rate limits: {MAX_POINTS_PER_MINUTE} points/min)")
+    logger.warning(f"  Fetching regional weather grid (spacing: {grid_spacing}nm, corridor: {corridor_width_nm:.1f}nm [auto: {CORRIDOR_WIDTH_RATIO*100:.0f}% of {route_length_nm:.1f}nm route], route: {route_length_nm:.1f}nm)...")
     
     # Normalize direction vector
     route_len_deg = math.sqrt(dx*dx + dy*dy)
@@ -514,15 +567,33 @@ def fetch_regional_weather_grid(
     # Split grid points into chunks if needed
     import time
     chunk_count = (len(grid_points) + MAX_LOCATIONS_PER_REQUEST - 1) // MAX_LOCATIONS_PER_REQUEST
-    logger.warning(f"  Making {chunk_count} API call chunks (2 requests per chunk = {chunk_count * 2} total)")
+    total_api_calls = chunk_count * API_CALLS_PER_CHUNK
+    logger.warning(f"  Making {chunk_count} API call chunks (2 requests per chunk = {total_api_calls} total)")
+    
+    # Calculate optimal delay based on rate limits
+    # 600 calls/minute = 10 calls/second = 5 chunks/second
+    # If we have more chunks than the rate limit allows, we need to spread them over more time
+    if chunk_count > MAX_CHUNKS_PER_MINUTE:
+        # Need to spread chunks over multiple minutes
+        minutes_needed = math.ceil(chunk_count / MAX_CHUNKS_PER_MINUTE)
+        optimal_delay = (60.0 * minutes_needed) / chunk_count  # Spread evenly over time
+        logger.warning(f"  Large grid: {chunk_count} chunks will take {minutes_needed:.1f} minutes (rate limit: {MAX_CHUNKS_PER_MINUTE} chunks/min)")
+    else:
+        # Can fit within 1 minute, use minimum delay
+        min_delay_per_chunk = 60.0 / MAX_CHUNKS_PER_MINUTE  # ~0.2 seconds
+        optimal_delay = max(0.25, min_delay_per_chunk * 1.25)  # 25% safety margin, minimum 0.25s
+    
+    estimated_duration_minutes = (total_api_calls / MAX_API_CALLS_PER_MINUTE)
+    if estimated_duration_minutes > 1.0:
+        logger.warning(f"  Estimated fetch duration: {estimated_duration_minutes:.1f} minutes (staying within {MAX_API_CALLS_PER_MINUTE} calls/min limit)")
     
     for chunk_idx, chunk_start in enumerate(range(0, len(grid_points), MAX_LOCATIONS_PER_REQUEST)):
         chunk = grid_points[chunk_start:chunk_start + MAX_LOCATIONS_PER_REQUEST]
         
         # Add delay between chunks to avoid rate limiting (except for first chunk)
         if chunk_idx > 0:
-            delay = 2.0  # 2 seconds between chunks
-            logger.warning(f"  Waiting {delay}s before next chunk (to avoid rate limits)...")
+            delay = optimal_delay
+            logger.warning(f"  Waiting {delay:.2f}s before next chunk (rate limit: {MAX_CHUNKS_PER_MINUTE} chunks/min)...")
             time.sleep(delay)
         
         lat_str = ','.join(str(lat) for lat, lng in chunk)
