@@ -752,7 +752,6 @@ def generate_isochrone_routes(request: RouteRequest) -> List[GeneratedRoute]:
         start=request.start,
         end=request.end,
         departure_time=request.departure_time,
-        grid_spacing=5.0,  # 5nm grid spacing (4x more detail = better routing decisions)
         forecast_hours=forecast_hours,
         corridor_width_nm=30.0  # 30nm total width (15nm each side) - optimized to reduce wasted points
     )

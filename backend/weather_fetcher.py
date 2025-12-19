@@ -14,7 +14,7 @@ FEATURES:
 import requests
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple
 from models import Coordinates, Waypoint, WaypointWeather
 import math
 
