@@ -102,6 +102,7 @@ function App() {
               endPoint={endPoint}
               boatType={boatType}
               loading={loading}
+              hasRoutes={routes.length > 0}
               onBoatTypeChange={setBoatType}
               onCalculate={handleCalculate}
               onClear={handleClear}

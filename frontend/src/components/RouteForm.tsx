@@ -5,6 +5,7 @@ interface RouteFormProps {
   endPoint: Coordinates | null;
   boatType: BoatType;
   loading: boolean;
+  hasRoutes: boolean;
   onBoatTypeChange: (type: BoatType) => void;
   onCalculate: () => void;
   onClear: () => void;
@@ -36,11 +37,13 @@ export default function RouteForm({
   endPoint,
   boatType,
   loading,
+  hasRoutes,
   onBoatTypeChange,
   onCalculate,
   onClear,
 }: RouteFormProps) {
   const canCalculate = startPoint && endPoint && !loading;
+  const showReset = hasRoutes && !loading;
 
   return (
     <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-5 shadow-xl border border-slate-700">
@@ -120,12 +123,14 @@ export default function RouteForm({
       {/* Action buttons */}
       <div className="flex gap-2">
         <button
-          onClick={onCalculate}
-          disabled={!canCalculate}
+          onClick={showReset ? onClear : onCalculate}
+          disabled={!showReset && !canCalculate}
           className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2
-            ${canCalculate
-              ? 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:from-sky-400 hover:to-emerald-400 shadow-lg'
-              : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+            ${showReset
+              ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white hover:from-cyan-400 hover:to-emerald-400 shadow-lg text-lg'
+              : canCalculate
+                ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white hover:from-cyan-400 hover:to-emerald-400 shadow-lg'
+                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
             }`}
         >
           {loading ? (
@@ -136,20 +141,18 @@ export default function RouteForm({
               </svg>
               Calculating...
             </>
+          ) : showReset ? (
+            <span className="flex items-center justify-center w-full gap-2">
+              <span className="text-xl">🔄</span>
+              <span>Reset</span>
+              <span className="text-xl invisible">🔄</span>
+            </span>
           ) : (
             <>
               <span>🚀</span>
               Calculate Routes
             </>
           )}
-        </button>
-        
-        <button
-          onClick={onClear}
-          className="py-3 px-4 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors"
-          title="Clear all points"
-        >
-          ✕
         </button>
       </div>
     </div>
