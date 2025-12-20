@@ -14,6 +14,7 @@ from flask_cors import CORS
 from datetime import datetime
 import traceback
 import logging
+import os
 
 from models import RouteRequest, Coordinates, BoatType, BOAT_PROFILES
 # from wind_router import generate_hybrid_routes
@@ -23,16 +24,33 @@ from route_scorer import score_route
 from route_generator import calculate_distance  # , generate_routes
 
 # Set up logging - both to file and console
+# Use absolute path relative to project root (parent of backend/)
 log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-logging.basicConfig(
-    level=logging.DEBUG,  # Capture DEBUG and above
-    format=log_format,
-    handlers=[
-        logging.FileHandler('backend.log'),  # Save to file
-        logging.StreamHandler()  # Also print to console/terminal
-    ]
-)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)  # Go up one level from backend/ to project root
+log_file_path = os.path.join(project_root, 'backend.log')
+
+# Clear any existing handlers to avoid conflicts
+root_logger = logging.getLogger()
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+    handler.close()
+
+# Set up fresh handlers
+file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter(log_format))
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+console_handler.setFormatter(logging.Formatter(log_format))
+
+root_logger.setLevel(logging.DEBUG)
+root_logger.addHandler(file_handler)
+root_logger.addHandler(console_handler)
+
 logger = logging.getLogger(__name__)
+logger.info(f"Logging initialized - log file: {log_file_path}")
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for local development

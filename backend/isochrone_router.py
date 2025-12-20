@@ -97,12 +97,14 @@ ANGULAR_STEP_DEFAULT = 20  # Try 18 directions (360/20) - reduced from 15 for sm
 ANGULAR_STEP_NEAR_GOAL = 15  # Try 24 directions near goal - reduced from 10
 
 # Grid cell size for pruning (degrees)
-GRID_CELL_SIZE = 0.15  # ~9 nautical miles at mid-latitudes (larger to allow tacking patterns)
-GRID_CELL_SIZE_NEAR_GOAL = 0.05  # Finer grid when close to goal for precision
+# Fixed small cell size: 2nm = ~0.033° at mid-latitudes
+# Small cells prevent convergence and make pruning more effective
+GRID_CELL_SIZE = 0.033  # ~2 nautical miles at mid-latitudes (fixed size for consistent pruning)
+GRID_CELL_SIZE_NEAR_GOAL = 0.033  # Same size near goal (no need to change)
 
 # Maximum isochrone size to prevent exponential explosion
-MAX_ISOCHRONE_SIZE = 50  # If isochrone grows beyond this, use aggressive pruning
-MAX_ISOCHRONE_GROWTH_WARNING = 300  # Warn if isochrone exceeds this before pruning
+MAX_ISOCHRONE_SIZE = 75  # If isochrone grows beyond this, use aggressive pruning (increased from 50 for better route exploration)
+MAX_ISOCHRONE_GROWTH_WARNING = 100  # Cut to 100 points if isochrone exceeds this
 
 # Adaptive time steps (hours)
 TIME_STEP_FAR = 2.0      # >50nm from goal
@@ -139,20 +141,21 @@ def get_grid_cell(position: Coordinates, cell_size: float) -> Tuple[int, int]:
 
 def get_adaptive_grid_cell_size(distance_to_goal: float, exploration_level: int = 0) -> float:
     """
-    Get grid cell size based on exploration level only (NOT distance to goal).
+    Get grid cell size - now returns fixed small size for consistent pruning.
     
-    Keep grid size constant to avoid over-pruning near the goal.
-    Only use larger cells in very early exploration to allow diverse routes.
+    Using a fixed small cell size (2nm) prevents convergence issues and makes
+    pruning more effective. Points are spread across more cells, reducing the
+    chance of all points mapping to the same cells.
     
     Args:
-        distance_to_goal: Distance to destination in nm (not used anymore)
-        exploration_level: Number of cells visited (for tacking patterns)
+        distance_to_goal: Distance to destination in nm (not used)
+        exploration_level: Number of cells visited (not used, kept for API compatibility)
+        
+    Returns:
+        Fixed grid cell size in degrees (~0.033° = 2nm)
     """
-    # Very early exploration: use EXTRA large cells to allow tacking patterns to develop
-    if exploration_level < 50:
-        return GRID_CELL_SIZE * 2.0  # 0.3° = ~18nm
-    
-    # Otherwise use constant grid size everywhere
+    # Fixed small cell size: 2nm = ~0.033° at mid-latitudes
+    # This prevents convergence and makes pruning more effective
     return GRID_CELL_SIZE
 
 
@@ -222,7 +225,8 @@ def is_in_directional_cone(
 def should_prune_point(
     point: IsochronePoint,
     state: IsochroneState,
-    destination: Coordinates
+    destination: Coordinates,
+    route_distance: float
 ) -> bool:
     """
     Decide whether to prune (discard) a point to reduce computation.
@@ -238,6 +242,7 @@ def should_prune_point(
         point: Point to consider
         state: Current algorithm state
         destination: Goal position
+        route_distance: Total route distance in nm (used for distance-based pruning threshold)
         
     Returns:
         True if point should be pruned (discarded)
@@ -249,66 +254,164 @@ def should_prune_point(
     cell_size = get_adaptive_grid_cell_size(distance_to_goal, len(state.visited_grid))
     cell = get_grid_cell(point.position, cell_size)
     
-    # if cell in state.visited_grid:
-    #     # We've been to this grid cell before
-    #     previous_best_time = state.visited_grid[cell]
-        
-    #     # Be progressively more lenient based on exploration stage
-    #     # Early on, be lenient to allow diverse route discovery
-    #     # Later, apply more selective filtering
-    #     # IMPORTANT: Use LARGER tolerances to prevent isochrone collapse
-    #     if len(state.visited_grid) < 20:
-    #         time_tolerance = 0.75  # Allow 75% slower routes in very early exploration (was 0.5)
-    #     elif len(state.visited_grid) < 50:
-    #         time_tolerance = 0.60  # Allow 60% slower routes in early exploration (was 0.35)
-    #     elif len(state.visited_grid) < 150:
-    #         time_tolerance = 0.45  # Allow 45% slower in middle phase (was 0.25)
-    #     else:
-    #         time_tolerance = 0.30  # Allow 30% tolerance when well-explored (was 0.15)
-        
-    #     if point.time_hours > previous_best_time * (1 + time_tolerance):
-    #         # Current point is significantly slower - prune it
-    #         return True
+    # Update closest distance if this is better (for logging and distance-based pruning)
+    if distance_to_goal < state.closest_distance_to_goal:
+        state.closest_distance_to_goal = distance_to_goal
     
-    # Update visited grid with this point (it's the best so far for this cell)
-    state.visited_grid[cell] = point.time_hours
+    # Strategy 2: Distance-based pruning (check first, before grid-based)
+    # Apply aggressively from the start to achieve ~90% pruning consistently
+    exploration_level = len(state.visited_grid)
+    distance_threshold = route_distance * 0.5  # 50% of route distance (halfway point)
+    
+    # Enable distance-based pruning from the very start for consistent 90% pruning
+    # Progressive tightening: more aggressive as we explore more
+    if exploration_level < 10:
+        distance_multiplier = 1.3  # Prune if >1.3x farther than best (very aggressive)
+    elif exploration_level < 20:
+        distance_multiplier = 1.25  # Prune if >1.25x farther than best
+    elif exploration_level < 40:
+        distance_multiplier = 1.2  # Prune if >1.2x farther than best
+    elif exploration_level < 60:
+        distance_multiplier = 1.15  # Prune if >1.15x farther than best
+    else:
+        # Well-explored: very tight pruning (like the successful final iteration)
+        distance_multiplier = 1.1  # Prune if >1.1x farther than best
+    
+    # Apply distance pruning when:
+    # - We're still far from goal (>50% of route distance remaining), OR
+    # - We're well-explored (exploration_level > 10)
+    # This ensures aggressive pruning from the start
+    if state.closest_distance_to_goal > distance_threshold or exploration_level > 10:
+        if state.closest_distance_to_goal > 0:  # Only if we have a valid closest distance
+            if distance_to_goal > state.closest_distance_to_goal * distance_multiplier:
+                return True
+    
+    # Strategy 1: Grid-based pruning (adaptive grid size)
+    # Check if we've been to this grid cell before
+    if cell in state.visited_grid:
+        previous_best_time = state.visited_grid[cell]
+        
+        # Calculate time difference
+        time_diff = point.time_hours - previous_best_time
+        
+        # If this point is better (faster), update the grid
+        if time_diff < 0:
+            state.visited_grid[cell] = point.time_hours
+            # Don't prune - this is a better route to this cell
+            return False
+        
+        # If this point is significantly slower, prune it
+        # Use progressive tolerance: more lenient early, stricter later
+        # Calculate tolerance based on exploration level
+        # Primary mechanism: relative tolerance (scales with time)
+        # Safety net: minimum absolute tolerance (prevents over-pruning very early)
+        
+        # Relative tolerance: aggressive from the start to achieve ~90% pruning
+        # TIGHTENED: Much more aggressive tolerances to consistently prune 90%
+        if exploration_level < 5:
+            # Very early: still aggressive
+            relative_tolerance_ratio = 0.15  # Allow only 15% slower (1.15x total time)
+        elif exploration_level < 20:
+            relative_tolerance_ratio = 0.12  # Allow only 12% slower (1.12x total time)
+        elif exploration_level < 50:
+            relative_tolerance_ratio = 0.10  # Allow only 10% slower (1.10x total time)
+        elif exploration_level < 150:
+            relative_tolerance_ratio = 0.08  # Allow only 8% slower (1.08x total time)
+        else:
+            relative_tolerance_ratio = 0.05  # Allow only 5% slower (1.05x total time)
+        
+        # Calculate relative threshold (primary mechanism)
+        relative_threshold = previous_best_time * relative_tolerance_ratio
+        
+        # Minimum absolute tolerance: scales with exploration level
+        # TIGHTENED: Much more aggressive absolute tolerances
+        time_step = 0.5  # Current time step
+        if exploration_level < 5:
+            # Very early: small tolerance
+            min_absolute_tolerance = time_step * 0.5  # 0.25 hours
+        elif exploration_level < 20:
+            min_absolute_tolerance = time_step * 0.4  # 0.2 hours
+        elif exploration_level < 50:
+            min_absolute_tolerance = time_step * 0.3  # 0.15 hours
+        elif exploration_level < 150:
+            min_absolute_tolerance = time_step * 0.2  # 0.1 hours
+        else:
+            min_absolute_tolerance = time_step * 0.1  # 0.05 hours
+        
+        # Account for time gap between previous_best_time and current time
+        # If previous_best_time is very old, we need some tolerance because
+        # the isochrone has moved forward significantly since then
+        time_gap = point.time_hours - previous_best_time
+        # REDUCED gap bonus: Add smaller tolerance proportional to time gap
+        # This prevents pruning when comparing to very old times, but not excessively
+        gap_bonus = min(time_gap * 0.1, time_step * 0.5)  # Up to 0.25 hour bonus for large gaps
+        
+        # Use the more lenient of: relative tolerance or (minimum absolute tolerance + gap bonus)
+        # This ensures we use relative tolerance when it's more lenient,
+        # but have a safety net for very early exploration and old time comparisons
+        combined_threshold = max(relative_threshold, min_absolute_tolerance + gap_bonus)
+        
+        # Prune only if significantly slower than the combined threshold
+        if time_diff > combined_threshold:
+            return True
+        
+        # If we get here, the point is within tolerance - keep it but don't update grid
+        # (we already have a better time for this cell)
+        return False
+    else:
+        # First time visiting this cell - but we can still prune if it's clearly bad
+        # Strategy 3: Prune new cells that are significantly worse than nearby cells
+        # or too far from goal (even if it's a new cell)
+        
+        # Check nearby cells to see if we've reached similar areas faster
+        # Use a slightly larger cell size to check neighbors
+        neighbor_cell_size = cell_size * 1.5  # Check cells 1.5x larger
+        neighbor_cell = get_grid_cell(point.position, neighbor_cell_size)
+        
+        # If we've been to a nearby (larger) cell, compare times
+        if neighbor_cell in state.visited_grid:
+            nearby_best_time = state.visited_grid[neighbor_cell]
+            time_diff = point.time_hours - nearby_best_time
+            
+            # Be more lenient for nearby cells (they're not exactly the same location)
+            # But still prune if significantly slower - made more aggressive
+            if exploration_level < 50:
+                nearby_tolerance = 0.15  # Allow only 15% slower for nearby cells
+            else:
+                nearby_tolerance = 0.10  # Allow only 10% slower for nearby cells
+            
+            if time_diff > nearby_best_time * nearby_tolerance:
+                # This new cell is significantly slower than a nearby cell - prune it
+                return True
+        
+        # Strategy 4: Prune new cells that are too far from goal (even if new)
+        # This prevents exploring areas that are clearly off-course
+        # Made much more aggressive to achieve ~90% pruning
+        if exploration_level > 3:  # Start very early
+            # Calculate how much worse this point is distance-wise
+            distance_ratio = distance_to_goal / state.closest_distance_to_goal if state.closest_distance_to_goal > 0 else 1.0
+            
+            # Progressive tightening: very aggressive from the start
+            if exploration_level > 10 and distance_ratio > 1.25:
+                # Early exploration: prune new cells 25%+ farther from goal
+                return True
+            elif exploration_level > 20 and distance_ratio > 1.2:
+                # Mid exploration: prune new cells 20%+ farther from goal
+                return True
+            elif exploration_level > 40 and distance_ratio > 1.15:
+                # Well-explored: prune new cells 15%+ farther from goal
+                return True
+            elif exploration_level > 60 and distance_ratio > 1.1:
+                # Very well-explored: prune new cells 10%+ farther from goal
+                return True
+        
+        # If we get here, this is a reasonable new cell - add it to grid
+        state.visited_grid[cell] = point.time_hours
+        return False
     
     # Note: No-go zone check happens BEFORE points are created in propagate_isochrone(),
     # so we don't need a redundant check here. Points that reach here have already
     # been verified to not require sailing in the no-go zone.
-    
-    # Strategy 2: Distance-based pruning (DISABLED - allow all distances)
-    # Update closest distance if this is better (for logging only)
-    if distance_to_goal < state.closest_distance_to_goal:
-        state.closest_distance_to_goal = distance_to_goal
-    
-    # NOTE: Distance-based pruning has been disabled to allow the algorithm
-    # to explore all viable paths without eliminating routes that take longer distances.
-    # The isochrone size is controlled by the MAX_ISOCHRONE_SIZE limit and
-    # grid-based pruning instead.
-    
-    # # OLD distance-based pruning logic (now disabled):
-    # # Calculate how much we've explored
-    # exploration_level = len(state.visited_grid)
-    # 
-    # if exploration_level < 50:
-    #     # Very early: allow routes that go somewhat off course (for discovering tacking patterns)
-    #     if distance_to_goal > state.closest_distance_to_goal * 8.0:
-    #         return True
-    # elif exploration_level < 150:
-    #     # Early-medium exploration: selective pruning
-    #     if distance_to_goal > state.closest_distance_to_goal * 4.0:
-    #         return True
-    # elif state.closest_distance_to_goal > 30:
-    #     # Well-explored, far from goal: more aggressive pruning
-    #     if distance_to_goal > state.closest_distance_to_goal * 3.0:
-    #         return True
-    # elif state.closest_distance_to_goal > 10:
-    #     # Well-explored, medium distance: even tighter pruning
-    #     if distance_to_goal > state.closest_distance_to_goal * 2.5:
-    #         return True
-    
-    return False
 
 
 def reconstruct_path(
@@ -408,6 +511,7 @@ def propagate_isochrone(
     time_step_hours: float,
     departure_time: datetime,
     state: IsochroneState,
+    route_distance: float,
     max_size: int = MAX_ISOCHRONE_SIZE
 ) -> List[IsochronePoint]:
     """
@@ -428,6 +532,7 @@ def propagate_isochrone(
         time_step_hours: Time interval for this step (hours)
         departure_time: Original departure time (for weather lookup)
         state: Algorithm state (for pruning)
+        route_distance: Total route distance in nm (for distance-based pruning threshold)
         
     Returns:
         New isochrone: all points reachable at current_time + time_step
@@ -523,7 +628,7 @@ def propagate_isochrone(
             )
             
             # Check if we should prune this point
-            if should_prune_point(new_point, state, destination):
+            if should_prune_point(new_point, state, destination, route_distance):
                 debug_counters['pruned'] += 1
                 continue
             
@@ -551,18 +656,75 @@ def propagate_isochrone(
             if destination_bearing and current_isochrone:
                 logger.warning(f"    Bearing to goal: {destination_bearing:.0f}deg")
     
+    # Log pruning effectiveness
+    if debug_counters['pruned'] > 0:
+        prune_ratio = debug_counters['pruned'] / (debug_counters['pruned'] + debug_counters['added']) if (debug_counters['pruned'] + debug_counters['added']) > 0 else 0
+        logger.debug(f"  Pruning: {debug_counters['pruned']} pruned, {debug_counters['added']} added ({prune_ratio*100:.1f}% pruned)")
+    
     # Always favor points closer to goal by sorting and limiting isochrone size
     if len(next_isochrone) > MAX_ISOCHRONE_GROWTH_WARNING:
         # Warn if isochrone is exploding (suggests pruning isn't aggressive enough)
         logger.warning(f"   Isochrone explosion detected: {len(next_isochrone)} points (threshold: {MAX_ISOCHRONE_GROWTH_WARNING})")
+        logger.warning(f"      Pruning stats: {debug_counters['pruned']} pruned, {debug_counters['added']} added")
         logger.warning(f"      This suggests pruning logic is too lenient. Consider adjusting time_tolerance or pruning strategies.")
     
-    if len(next_isochrone) > max_size:
-        reduction_ratio = len(next_isochrone) / max_size
-        logger.info(f"  Isochrone pruning: {len(next_isochrone)} → {max_size} points ({reduction_ratio:.1f}x reduction)")
-        # Sort by distance to goal and keep only the closest N points
-        next_isochrone.sort(key=lambda p: calculate_distance(p.position, destination))
-        next_isochrone = next_isochrone[:max_size]
+    # Apply fixed-size pruning if isochrone is too large
+    # Target: cut to 100 points if we exceed 100 threshold
+    # Fallback: if pruning would leave too few points, skip pruning this iteration
+    if len(next_isochrone) > MAX_ISOCHRONE_GROWTH_WARNING:
+        # Cut to fixed 100 points
+        target_size = 100
+        
+        # Skip pruning if already at or below target
+        if len(next_isochrone) <= target_size:
+            # Already under target, no need to prune
+            pass
+        else:
+            reduction_ratio = len(next_isochrone) / target_size
+            logger.info(f"  Isochrone pruning: {len(next_isochrone)} → {target_size} points ({reduction_ratio:.1f}x reduction, {((1 - target_size/len(next_isochrone))*100):.1f}% pruned)")
+            
+            # Smarter selection: Use a combination of distance and time efficiency
+            # This keeps points that are either:
+            # 1. Close to goal (distance-based)
+            # 2. Making good progress (time-efficient)
+            # This preserves diverse routes instead of just the closest points
+            
+            # Calculate a combined score: lower is better
+            # Score = normalized_distance + normalized_time
+            # Normalize both to 0-1 range so they're comparable
+            distances = [calculate_distance(p.position, destination) for p in next_isochrone]
+            times = [p.time_hours for p in next_isochrone]
+            
+            min_dist = min(distances)
+            max_dist = max(distances)
+            min_time = min(times)
+            max_time = max(times)
+            
+            # Avoid division by zero
+            dist_range = max_dist - min_dist if max_dist > min_dist else 1.0
+            time_range = max_time - min_time if max_time > min_time else 1.0
+            
+            # Score each point (lower is better)
+            scored_points = []
+            for i, point in enumerate(next_isochrone):
+                # Normalize distance (0 = closest, 1 = farthest)
+                norm_dist = (distances[i] - min_dist) / dist_range
+                # Normalize time (0 = fastest, 1 = slowest)
+                norm_time = (times[i] - min_time) / time_range
+                # Combined score: weight distance more (60%) than time (40%)
+                # This favors points that are close OR making good time progress
+                score = 0.6 * norm_dist + 0.4 * norm_time
+                scored_points.append((score, point))
+            
+            # Sort by score and keep the best N points
+            scored_points.sort(key=lambda x: x[0])
+            pruned_isochrone = [p for _, p in scored_points[:target_size]]
+            
+            # Final safety check: if pruning would result in 0 points, skip it
+            if len(pruned_isochrone) == 0:
+                logger.warning(f"  Skipping pruning: would result in 0 points, keeping all {len(next_isochrone)} points")
+            else:
+                next_isochrone = pruned_isochrone
     
     return next_isochrone
 
@@ -638,9 +800,10 @@ def calculate_isochrone_route(
     
     # Initialize first isochrone with just the start point
     state.current_isochrone = [start_point]
-    state.closest_distance_to_goal = calculate_distance(request.start, request.end)
+    route_distance = calculate_distance(request.start, request.end)
+    state.closest_distance_to_goal = route_distance
     
-    logger.info(f"Initial distance to goal: {state.closest_distance_to_goal:.1f} nm")
+    logger.info(f"Initial distance to goal: {route_distance:.1f} nm")
     
     # Propagate forward in time until we reach destination or timeout
     current_time_hours = 0.0
@@ -694,7 +857,8 @@ def calculate_isochrone_route(
             boat_type=request.boat_type.value,
             time_step_hours=time_step,
             departure_time=departure_time,
-            state=state
+            state=state,
+            route_distance=route_distance
         )
         
         # Check if isochrone is empty (no reachable points - shouldn't happen)

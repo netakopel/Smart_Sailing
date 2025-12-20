@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Circle, CircleMarker, useMapEvents, Popup, useMap } from 'react-leaflet';
 import { Icon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -86,12 +86,18 @@ function MapClickHandler({
   return null;
 }
 
-// Component to update map center when user location is detected
-function MapCenterUpdater({ center }: { center: LatLngExpression }) {
+// Component to update map center when user location is detected (only once)
+function MapCenterUpdater({ center, shouldUpdate }: { center: LatLngExpression; shouldUpdate: boolean }) {
   const map = useMap();
+  const hasUpdatedRef = useRef(false);
+  
   useEffect(() => {
-    map.setView(center, map.getZoom());
-  }, [map, center]);
+    // Only update once when shouldUpdate becomes true and we haven't updated yet
+    if (shouldUpdate && !hasUpdatedRef.current) {
+      map.setView(center, map.getZoom());
+      hasUpdatedRef.current = true;
+    }
+  }, [map, center, shouldUpdate]);
   return null;
 }
 
@@ -110,6 +116,7 @@ export default function Map({
   
   // State for user's detected location
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
+  const [hasInitialLocation, setHasInitialLocation] = useState(false);
   
   // Default center: English Channel (good sailing area) - fallback
   const defaultCenter: LatLngExpression = [50.0, -2.0];
@@ -120,12 +127,13 @@ export default function Map({
     ? [userLocation.lat, userLocation.lng] 
     : defaultCenter;
   
-  // Fetch user location on component mount
+  // Fetch user location on component mount (only once)
   useEffect(() => {
     getUserLocation()
       .then((location) => {
         if (location) {
           setUserLocation(location);
+          setHasInitialLocation(true);
         }
       })
       .catch((error) => {
@@ -164,8 +172,8 @@ export default function Map({
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
 
-        {/* Update map center when user location is detected */}
-        <MapCenterUpdater center={mapCenter} />
+        {/* Update map center when user location is detected (only once on initial load) */}
+        <MapCenterUpdater center={mapCenter} shouldUpdate={hasInitialLocation && userLocation !== null} />
 
         {/* Click handler for setting points */}
         <MapClickHandler
