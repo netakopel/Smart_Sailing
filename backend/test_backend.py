@@ -245,7 +245,8 @@ def test_heading_180_not_pruned():
         accumulated_distance=distance_nm
     )
     
-    should_prune = should_prune_point(new_point, state, end)
+    route_distance = calculate_distance(start, end)
+    should_prune = should_prune_point(new_point, state, end, route_distance)
     
     initial_distance = state.closest_distance_to_goal
     logger.info(f"Initial distance: {initial_distance:.1f}nm")
@@ -289,7 +290,8 @@ def test_heading_makes_progress():
                 accumulated_distance=boat_speed
             )
             
-            should_prune = should_prune_point(new_point, state, end)
+            route_distance = calculate_distance(start, end)
+            should_prune = should_prune_point(new_point, state, end, route_distance)
             progress = initial_distance - new_distance
             
             logger.info(f"{description} ({heading}°): Progress={progress:.2f}nm, {'KEPT' if not should_prune else 'PRUNED'}")
@@ -343,7 +345,8 @@ def test_pruning_prevents_revisiting_cells():
         accumulated_distance=10.0
     )
     
-    should_prune = should_prune_point(second_point, state, end)
+    route_distance = calculate_distance(start, end)
+    should_prune = should_prune_point(second_point, state, end, route_distance)
     
     logger.info(f"First visit time: {first_point.time_hours}h")
     logger.info(f"Second visit time: {second_point.time_hours}h")
@@ -375,7 +378,8 @@ def test_pruning_keeps_faster_arrival():
         accumulated_distance=8.0
     )
     
-    should_prune = should_prune_point(faster_point, state, end)
+    route_distance = calculate_distance(start, end)
+    should_prune = should_prune_point(faster_point, state, end, route_distance)
     
     logger.info(f"Previous arrival: 2.0h")
     logger.info(f"New faster arrival: 1.0h")
@@ -430,7 +434,8 @@ def test_pruning_with_multiple_propagation_points():
     new_cell = get_grid_cell(new_point.position, GRID_CELL_SIZE)
     
     is_new_cell = new_cell not in state.visited_grid
-    should_prune = should_prune_point(new_point, state, end)
+    route_distance = calculate_distance(start, end)
+    should_prune = should_prune_point(new_point, state, end, route_distance)
     
     logger.info(f"New cell: {new_cell}")
     logger.info(f"Is new cell? {is_new_cell}")
