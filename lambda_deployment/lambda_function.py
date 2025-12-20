@@ -7,6 +7,7 @@ Lambda calls lambda_handler() with the request data.
 
 import json
 import logging
+import traceback
 from datetime import datetime
 
 from models import RouteRequest, Coordinates, BoatType
@@ -17,7 +18,7 @@ from route_scorer import score_route
 
 # Set up logging (Lambda logs to CloudWatch)
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)  # Capture DEBUG messages for troubleshooting
 
 
 def route_to_dict(route):
@@ -116,32 +117,47 @@ def lambda_handler(event, context):
             departure_time=body["departure_time"]
         )
         
-        # Step 1: Generate route options using ISOCHRONE algorithm
-        logger.info("[ALGORITHM] Using Isochrone optimal routing")
-        generated_routes = generate_isochrone_routes(request)
+        logger.info(f"[REQUEST] Route from ({request.start.lat:.2f}, {request.start.lng:.2f}) "
+                   f"to ({request.end.lat:.2f}, {request.end.lng:.2f}) | "
+                   f"Boat: {request.boat_type.value} | Departure: {request.departure_time}")
         
-        # If isochrone fails or returns no routes, fallback to naive
+        # Step 1: Generate route options using ISOCHRONE algorithm
+        logger.info("[STEP 1] Generating routes using Isochrone algorithm...")
+        generated_routes = generate_isochrone_routes(request)
+        logger.info(f"[STEP 1 OK] Generated {len(generated_routes)} route(s)")
+        
         if not generated_routes:
-            logger.warning("[FALLBACK] Isochrone returned no routes, using naive routes")
+            logger.warning("[STEP 1] No routes generated, trying fallback...")
             generated_routes = generate_routes(request)
+            logger.info(f"[STEP 1 FALLBACK] Generated {len(generated_routes)} fallback route(s)")
         
         direct_distance = calculate_distance(request.start, request.end)
+        logger.info(f"[INFO] Direct distance: {direct_distance:.2f} nm")
         
         # Step 2: Fetch weather for each route
+        # This step makes API calls - this is where rate limiting can occur
+        logger.info(f"[STEP 2] Fetching weather for {len(generated_routes)} route(s) "
+                   f"({len(generated_routes) * 2} API calls)...")
         routes_with_weather = []
-        for route in generated_routes:
+        for i, route in enumerate(generated_routes):
+            logger.debug(f"[STEP 2] Route {i+1}/{len(generated_routes)}: "
+                        f"Fetching weather for {len(route.waypoints)} waypoints...")
             waypoints_with_weather = fetch_weather_for_waypoints(route.waypoints)
             route.waypoints = waypoints_with_weather
             routes_with_weather.append(route)
+        logger.info(f"[STEP 2 OK] Weather fetched for all routes")
         
         # Step 3: Score each route
+        logger.info("[STEP 3] Scoring routes...")
         scored_routes = []
         for route in routes_with_weather:
             scored = score_route(route, request.boat_type, direct_distance)
             scored_routes.append(scored)
+        logger.info(f"[STEP 3 OK] Scored {len(scored_routes)} route(s)")
         
         # Sort by score (highest first)
         scored_routes.sort(key=lambda r: r.score, reverse=True)
+        logger.info(f"[SORTED] Best route score: {scored_routes[0].score if scored_routes else 'N/A'}")
         
         # Build response
         response_body = {
@@ -149,6 +165,7 @@ def lambda_handler(event, context):
             "calculatedAt": datetime.now().isoformat()
         }
         
+        logger.info(f"[SUCCESS] Returning {len(scored_routes)} routes to client")
         return {
             "statusCode": 200,
             "headers": headers,
@@ -156,16 +173,41 @@ def lambda_handler(event, context):
         }
         
     except ValueError as e:
+        logger.warning(f"[VALIDATION ERROR] {str(e)}")
         return {
             "statusCode": 400,
             "headers": headers,
             "body": json.dumps({"error": f"Invalid input: {str(e)}"})
         }
     except Exception as e:
-        logger.error(f"Error: {str(e)}")  # This goes to CloudWatch logs
+        # Detailed error logging for CloudWatch
+        error_msg = str(e)
+        stack_trace = traceback.format_exc()
+        
+        logger.error(f"[LAMBDA ERROR] {error_msg}")
+        logger.error(f"[STACK TRACE]\n{stack_trace}")
+        
+        # Check if this is a rate limit issue
+        if "429" in error_msg or "rate" in error_msg.lower():
+            logger.error("[RATE LIMIT] Detected rate limiting issue - API may be temporarily blocked")
+            return {
+                "statusCode": 429,
+                "headers": headers,
+                "body": json.dumps({"error": "API rate limit exceeded. Please try again in a few minutes."})
+            }
+        
+        # Check if this is a timeout
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            logger.error("[TIMEOUT] Request took too long to process")
+            return {
+                "statusCode": 504,
+                "headers": headers,
+                "body": json.dumps({"error": "Request timed out. Please try with closer waypoints or simpler routes."})
+            }
+        
         return {
             "statusCode": 500,
             "headers": headers,
-            "body": json.dumps({"error": "Internal server error"})
+            "body": json.dumps({"error": "Internal server error. Check logs for details."})
         }
 

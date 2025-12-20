@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, Circle, CircleMarker, useMapEvents, Popup } from 'react-leaflet';
+import { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Polyline, Circle, CircleMarker, useMapEvents, Popup, useMap } from 'react-leaflet';
 import { Icon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Coordinates, Route, WeatherGrid } from '../types';
+import { getUserLocation } from '../services/geolocation';
 
 // Fix for default marker icons in Leaflet with bundlers
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -85,6 +86,15 @@ function MapClickHandler({
   return null;
 }
 
+// Component to update map center when user location is detected
+function MapCenterUpdater({ center }: { center: LatLngExpression }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [map, center]);
+  return null;
+}
+
 export default function Map({
   startPoint,
   endPoint,
@@ -98,9 +108,34 @@ export default function Map({
   // State for showing/hiding weather grid
   const [showGrid, setShowGrid] = useState(true);
   
-  // Default center: English Channel (good sailing area)
+  // State for user's detected location
+  const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
+  const [locationLoading, setLocationLoading] = useState(true);
+  
+  // Default center: English Channel (good sailing area) - fallback
   const defaultCenter: LatLngExpression = [50.0, -2.0];
   const defaultZoom = 7;
+  
+  // Use user location if available, otherwise use default
+  const mapCenter: LatLngExpression = userLocation 
+    ? [userLocation.lat, userLocation.lng] 
+    : defaultCenter;
+  
+  // Fetch user location on component mount
+  useEffect(() => {
+    getUserLocation()
+      .then((location) => {
+        if (location) {
+          setUserLocation(location);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to get user location:', error);
+      })
+      .finally(() => {
+        setLocationLoading(false);
+      });
+  }, []);
 
   // Convert waypoints to polyline format
   const getRoutePositions = (route: Route): LatLngExpression[] => {
@@ -122,7 +157,7 @@ export default function Map({
         </button>
       )}
       <MapContainer
-        center={defaultCenter}
+        center={mapCenter}
         zoom={defaultZoom}
         className="h-full w-full"
         style={{ background: '#0f172a' }}
@@ -132,6 +167,9 @@ export default function Map({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
+
+        {/* Update map center when user location is detected */}
+        {!locationLoading && <MapCenterUpdater center={mapCenter} />}
 
         {/* Click handler for setting points */}
         <MapClickHandler

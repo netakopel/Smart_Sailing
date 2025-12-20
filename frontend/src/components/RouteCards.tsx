@@ -6,6 +6,69 @@ interface RouteCardsProps {
   onSelectRoute: (index: number) => void;
 }
 
+// Utility function to convert routes to CSV
+function routesToCSV(routes: Route[]): string {
+  // CSV headers
+  const headers = [
+    'Route Name',
+    'Waypoint Number',
+    'Latitude',
+    'Longitude',
+    'Estimated Arrival',
+    'Wind Speed (knots)',
+    'Wind Sustained (knots)',
+    'Wind Gusts (knots)',
+    'Wind Direction (degrees)',
+    'Wave Height (meters)',
+    'Temperature (celsius)',
+    'Precipitation (mm)',
+    'Visibility (km)'
+  ];
+
+  // Build CSV rows
+  const rows: string[] = [headers.join(',')];
+
+  routes.forEach((route) => {
+    route.waypoints.forEach((waypoint, index) => {
+      const row = [
+        `"${route.name}"`,
+        (index + 1).toString(),
+        waypoint.position.lat.toString(),
+        waypoint.position.lng.toString(),
+        `"${waypoint.estimatedArrival}"`,
+        waypoint.weather?.windSpeed.toString() ?? '',
+        waypoint.weather?.windSustained.toString() ?? '',
+        waypoint.weather?.windGusts.toString() ?? '',
+        waypoint.weather?.windDirection.toString() ?? '',
+        waypoint.weather?.waveHeight.toString() ?? '',
+        waypoint.weather?.temperature.toString() ?? '',
+        waypoint.weather?.precipitation.toString() ?? '',
+        waypoint.weather?.visibility.toString() ?? ''
+      ];
+      rows.push(row.join(','));
+    });
+  });
+
+  return rows.join('\n');
+}
+
+// Utility function to download CSV
+function downloadCSV(csvContent: string, filename: string) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  URL.revokeObjectURL(url);
+}
+
 // Color palette for routes - matches Map.tsx
 const ROUTE_COLOR_CLASSES = [
   { color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500' },      // Blue
@@ -178,13 +241,31 @@ export default function RouteCards({ routes, selectedIndex, onSelectRoute, onNoG
     .map((route, originalIndex) => ({ route, originalIndex }))
     .sort((a, b) => b.route.score - a.route.score);
 
+  // Handle CSV download
+  const handleDownloadCSV = () => {
+    const csvContent = routesToCSV(routes);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `routes-waypoints-${timestamp}.csv`;
+    downloadCSV(csvContent, filename);
+  };
+
   return (
     <div className="space-y-3">
-      <h3 className="text-white font-semibold flex items-center gap-2">
-        <span>📊</span>
-        Route Options
-        <span className="text-slate-500 text-sm font-normal">({routes.length} routes)</span>
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-white font-semibold flex items-center gap-2">
+          <span>📊</span>
+          Route Options
+          <span className="text-slate-500 text-sm font-normal">({routes.length} routes)</span>
+        </h3>
+        <button
+          onClick={handleDownloadCSV}
+          className="bg-gradient-to-r from-green-300 via-emerald-400 to-teal-400 hover:from-green-400 hover:via-emerald-500 hover:to-teal-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg hover:shadow-xl"
+          title="Download all waypoints as CSV"
+        >
+          <span>⬇️</span>
+          <span>Download CSV</span>
+        </button>
+      </div>
       
       <div className="flex flex-col gap-3 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
         {sortedRoutesWithIndices.map(({ route, originalIndex }, sortedIndex) => (
