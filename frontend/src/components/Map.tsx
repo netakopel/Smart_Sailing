@@ -110,7 +110,6 @@ export default function Map({
   
   // State for user's detected location
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
-  const [locationLoading, setLocationLoading] = useState(true);
   
   // Default center: English Channel (good sailing area) - fallback
   const defaultCenter: LatLngExpression = [50.0, -2.0];
@@ -131,9 +130,6 @@ export default function Map({
       })
       .catch((error) => {
         console.error('Failed to get user location:', error);
-      })
-      .finally(() => {
-        setLocationLoading(false);
       });
   }, []);
 
@@ -169,7 +165,7 @@ export default function Map({
         />
 
         {/* Update map center when user location is detected */}
-        {!locationLoading && <MapCenterUpdater center={mapCenter} />}
+        <MapCenterUpdater center={mapCenter} />
 
         {/* Click handler for setting points */}
         <MapClickHandler
