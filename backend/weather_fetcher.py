@@ -36,11 +36,23 @@ WEATHER_APIS = {
 CORRIDOR_WIDTH_RATIO = 1.0 / 3.0  # Corridor width is 1/3 of route distance
 
 # API rate limits for grid optimization
-MAX_API_CALLS_PER_MINUTE = 600  # Open-Meteo rate limit
+# NOTE: Open-Meteo has a SHARED rate limit of 600 calls/minute across ALL endpoints
+# (weather API and marine API count toward the same limit)
+# However, there appears to be a burst limit that's more restrictive
+MAX_API_CALLS_PER_MINUTE = 600  # Open-Meteo shared rate limit across all endpoints
 API_CALLS_PER_CHUNK = 2  # Weather + Marine API calls per chunk
 MAX_POINTS_PER_BATCH = 100  # Maximum locations per API request
-MAX_CHUNKS_PER_MINUTE = MAX_API_CALLS_PER_MINUTE // API_CALLS_PER_CHUNK  # 300 chunks/minute
-MAX_POINTS_PER_MINUTE = MAX_CHUNKS_PER_MINUTE * MAX_POINTS_PER_BATCH  # 30,000 points/minute
+
+# Safe limit: Maximum 5 chunks to avoid API rate limit blocking
+# Based on empirical testing - API blocks around chunk 7 (14 calls)
+# Using 5 chunks = 10 API calls total (5 weather + 5 marine) for safety margin
+# This ensures we stay well below any burst limits
+MAX_CHUNKS_SAFE = 5
+MAX_POINTS_SAFE = MAX_CHUNKS_SAFE * MAX_POINTS_PER_BATCH  # 500 points maximum (safe)
+
+# Legacy constants for backward compatibility (deprecated - use MAX_CHUNKS_SAFE)
+MAX_CHUNKS = MAX_CHUNKS_SAFE
+MAX_POINTS = MAX_POINTS_SAFE
 
 
 def kmh_to_knots(kmh: float) -> float:
@@ -328,43 +340,108 @@ def summarize_weather(waypoints: List[Waypoint]) -> dict:
 def calculate_optimal_grid_spacing(
     route_length_nm: float,
     corridor_width_nm: float,
-    max_points: int = MAX_POINTS_PER_MINUTE
+    max_chunks: int = MAX_CHUNKS_SAFE,
+    max_points_per_batch: int = MAX_POINTS_PER_BATCH
 ) -> float:
     """
     Calculate optimal grid spacing based on route area and API rate limits.
     
-    This maximizes the number of grid points we can fetch within rate limits
-    while maintaining good coverage of the route corridor.
+    This ensures the grid will fit within the safe API call budget by calculating
+    spacing that results in no more than max_chunks chunks.
+    
+    Uses an iterative approach to find spacing that ensures exact point count
+    stays within limits, accounting for the +1 in point calculations and
+    odd-number adjustment for points across.
     
     Args:
         route_length_nm: Length of route in nautical miles
         corridor_width_nm: Width of corridor in nautical miles
-        max_points: Maximum number of points we can fetch (default: rate limit)
+        max_chunks: Maximum number of chunks we can safely make (default: MAX_CHUNKS_SAFE)
+        max_points_per_batch: Maximum points per API request (default: 100)
         
     Returns:
         Optimal grid spacing in nautical miles (minimum 2nm, maximum 50nm)
     """
+    # Maximum points we can safely fetch
+    max_points = max_chunks * max_points_per_batch
+    
     # Calculate route area (approximate, in square nautical miles)
     route_area = route_length_nm * corridor_width_nm
     
     if route_area <= 0:
         return 10.0  # Default spacing
     
-    # Calculate spacing to fit max_points in the area
-    # For a grid: points = (length/spacing + 1) * (width/spacing + 1)
+    # Initial estimate using approximation
+    # For a grid: points ≈ (length/spacing + 1) * (width/spacing + 1)
     # Approximate: points ≈ (length * width) / spacing^2
-    # So: spacing^2 ≈ (length * width) / points
-    # spacing ≈ sqrt((length * width) / points)
-    
-    optimal_spacing_squared = route_area / max_points
-    optimal_spacing = math.sqrt(optimal_spacing_squared)
+    # So: spacing ≈ sqrt((length * width) / max_points)
+    initial_spacing = math.sqrt(route_area / max_points)
     
     # Apply reasonable bounds
-    # Minimum 2nm for very short routes (ensures at least some detail)
-    # Maximum 50nm for very long routes (prevents excessive points)
-    optimal_spacing = max(2.0, min(50.0, optimal_spacing))
+    spacing = max(2.0, min(50.0, initial_spacing))
     
-    return optimal_spacing
+    # Iteratively refine spacing to ensure we stay under the limit
+    # Account for the exact point calculation:
+    # - num_points_along = max(2, ceil(route_length_nm / spacing) + 1)
+    # - num_points_across = max(1, ceil(corridor_width_nm / spacing))
+    # - if num_points_across % 2 == 0: num_points_across += 1
+    # - total_points = num_points_along * num_points_across
+    
+    # Binary search for optimal spacing
+    min_spacing = 2.0
+    max_spacing = 50.0
+    best_spacing = spacing
+    
+    for iteration in range(20):  # Max 20 iterations for binary search
+        num_points_along = max(2, int(math.ceil(route_length_nm / spacing)) + 1)
+        num_points_across = max(1, int(math.ceil(corridor_width_nm / spacing)))
+        if num_points_across % 2 == 0:
+            num_points_across += 1
+        total_points = num_points_along * num_points_across
+        
+        if total_points <= max_points:
+            # We're within limit, this is a valid spacing
+            best_spacing = spacing
+            # Try smaller spacing (finer grid) to get closer to the limit
+            if iteration < 19:  # Don't try on last iteration
+                test_spacing = (min_spacing + spacing) / 2.0
+                test_num_along = max(2, int(math.ceil(route_length_nm / test_spacing)) + 1)
+                test_num_across = max(1, int(math.ceil(corridor_width_nm / test_spacing)))
+                if test_num_across % 2 == 0:
+                    test_num_across += 1
+                test_total = test_num_along * test_num_across
+                
+                if test_total <= max_points:
+                    # Smaller spacing works, use it
+                    spacing = test_spacing
+                    min_spacing = test_spacing
+                else:
+                    # Smaller spacing doesn't work, we're at the limit
+                    break
+            else:
+                break
+        else:
+            # We're over the limit, need larger spacing
+            max_spacing = spacing
+            spacing = (spacing + max_spacing) / 2.0 if max_spacing < 50.0 else spacing * 1.1
+            spacing = min(50.0, spacing)
+    
+    # Use the best spacing we found
+    spacing = best_spacing
+    
+    # Final verification
+    num_points_along = max(2, int(math.ceil(route_length_nm / spacing)) + 1)
+    num_points_across = max(1, int(math.ceil(corridor_width_nm / spacing)))
+    if num_points_across % 2 == 0:
+        num_points_across += 1
+    total_points = num_points_along * num_points_across
+    
+    if total_points > max_points:
+        # Still over limit, use very conservative spacing
+        spacing = math.sqrt(route_area / (max_points * 0.8))  # 20% safety margin
+        spacing = max(2.0, min(50.0, spacing))
+    
+    return spacing
 
 
 def calculate_forecast_hours_needed(distance_nm: float, avg_boat_speed: float, buffer_multiplier: float = 1.5) -> int:
@@ -466,9 +543,9 @@ def fetch_regional_weather_grid(
     corridor_radius_nm = corridor_width_nm / 2.0
     
     # Calculate optimal grid spacing based on route area and API rate limits
-    # This maximizes point density while staying within 600 calls/minute limit
-    grid_spacing = calculate_optimal_grid_spacing(route_length_nm, corridor_width_nm)
-    logger.warning(f"  Auto-calculated optimal grid spacing: {grid_spacing:.1f}nm (based on rate limits: {MAX_POINTS_PER_MINUTE} points/min)")
+    # This ensures we stay within safe API call budget (MAX_CHUNKS_SAFE chunks)
+    grid_spacing = calculate_optimal_grid_spacing(route_length_nm, corridor_width_nm, MAX_CHUNKS_SAFE)
+    logger.warning(f"  Auto-calculated optimal grid spacing: {grid_spacing:.1f}nm (based on max {MAX_CHUNKS_SAFE} chunks = {MAX_POINTS_SAFE} points)")
     logger.warning(f"  Fetching regional weather grid (spacing: {grid_spacing}nm, corridor: {corridor_width_nm:.1f}nm [auto: {CORRIDOR_WIDTH_RATIO*100:.0f}% of {route_length_nm:.1f}nm route], route: {route_length_nm:.1f}nm)...")
     
     # Normalize direction vector
@@ -567,25 +644,96 @@ def fetch_regional_weather_grid(
     # Split grid points into chunks if needed
     import time
     chunk_count = (len(grid_points) + MAX_LOCATIONS_PER_REQUEST - 1) // MAX_LOCATIONS_PER_REQUEST
+    
+    # Enforce maximum chunks limit to avoid API blocking
+    # This should rarely happen if calculate_optimal_grid_spacing worked correctly,
+    # but we add this as a safety check
+    if chunk_count > MAX_CHUNKS_SAFE:
+        logger.warning(f"  Grid would require {chunk_count} chunks, but max is {MAX_CHUNKS_SAFE}.")
+        logger.warning(f"  This means calculate_optimal_grid_spacing didn't account for exact point count.")
+        logger.warning(f"  Recalculating grid spacing to ensure we stay within limit...")
+        
+        # Recalculate spacing more conservatively
+        max_points_allowed = MAX_CHUNKS_SAFE * MAX_LOCATIONS_PER_REQUEST
+        # Use a more conservative calculation with safety margin
+        route_area = route_length_nm * corridor_width_nm
+        conservative_spacing = math.sqrt(route_area / (max_points_allowed * 0.85))  # 15% safety margin
+        conservative_spacing = max(2.0, min(50.0, conservative_spacing))
+        
+        # Regenerate grid with conservative spacing
+        logger.warning(f"  Using conservative spacing: {conservative_spacing:.2f}nm (was {grid_spacing:.2f}nm)")
+        grid_spacing = conservative_spacing
+        
+        # Recalculate grid points
+        grid_points = []
+        num_points_along_route = max(2, int(math.ceil(route_length_nm / grid_spacing)) + 1)
+        num_points_across = max(1, int(math.ceil(corridor_width_nm / grid_spacing)))
+        if num_points_across % 2 == 0:
+            num_points_across += 1
+        
+        for i in range(num_points_along_route):
+            t = i / (num_points_along_route - 1) if num_points_along_route > 1 else 0
+            center_x = start_x + t * dx
+            center_y = start_y + t * dy
+            center_lng = center_x / cos_lat
+            center_lat = center_y
+            
+            for j in range(num_points_across):
+                offset_ratio = (j / (num_points_across - 1) - 0.5) * 2.0 if num_points_across > 1 else 0
+                offset_nm = offset_ratio * corridor_radius_nm
+                offset_deg = offset_nm / 60.0
+                offset_x = perp_dx * offset_deg
+                offset_y = perp_dy * offset_deg
+                point_lng = normalize_lng((center_x + offset_x) / cos_lat)
+                point_lat = center_y + offset_y
+                grid_points.append((round(point_lat, 4), round(point_lng, 4)))
+        
+        # Recalculate chunk count
+        chunk_count = (len(grid_points) + MAX_LOCATIONS_PER_REQUEST - 1) // MAX_LOCATIONS_PER_REQUEST
+        
+        if chunk_count > MAX_CHUNKS_SAFE:
+            # Still over limit, truncate as last resort (but preserve end point row)
+            logger.warning(f"  Still over limit after recalculation. Truncating to {MAX_CHUNKS_SAFE} chunks.")
+            max_points_allowed = MAX_CHUNKS_SAFE * MAX_LOCATIONS_PER_REQUEST
+            
+            # Truncate, but ensure we keep the end point row
+            # The grid is organized as: row 0, row 1, ..., row N-1 (where row N-1 contains end point)
+            # Each row has num_points_across points
+            if num_points_across > 0:
+                # Calculate how many complete rows we can fit
+                max_complete_rows = max_points_allowed // num_points_across
+                # Ensure we keep at least the first row (start) and last row (end)
+                if max_complete_rows >= 2:
+                    # Keep first row and last row, truncate middle rows if needed
+                    # But for simplicity, just truncate from the end of the list
+                    # This might cut off part of a row, but ensures we don't exceed the limit
+                    grid_points = grid_points[:max_points_allowed]
+                else:
+                    # Not enough points for even 2 rows, keep what we can
+                    grid_points = grid_points[:max_points_allowed]
+            else:
+                grid_points = grid_points[:max_points_allowed]
+            
+            chunk_count = MAX_CHUNKS_SAFE
+        else:
+            logger.warning(f"  Regenerated grid: {len(grid_points)} points ({num_points_along_route} along, {num_points_across} across)")
+    
     total_api_calls = chunk_count * API_CALLS_PER_CHUNK
     logger.warning(f"  Making {chunk_count} API call chunks (2 requests per chunk = {total_api_calls} total)")
     
-    # Calculate optimal delay based on rate limits
-    # 600 calls/minute = 10 calls/second = 5 chunks/second
-    # If we have more chunks than the rate limit allows, we need to spread them over more time
-    if chunk_count > MAX_CHUNKS_PER_MINUTE:
-        # Need to spread chunks over multiple minutes
-        minutes_needed = math.ceil(chunk_count / MAX_CHUNKS_PER_MINUTE)
-        optimal_delay = (60.0 * minutes_needed) / chunk_count  # Spread evenly over time
-        logger.warning(f"  Large grid: {chunk_count} chunks will take {minutes_needed:.1f} minutes (rate limit: {MAX_CHUNKS_PER_MINUTE} chunks/min)")
-    else:
-        # Can fit within 1 minute, use minimum delay
-        min_delay_per_chunk = 60.0 / MAX_CHUNKS_PER_MINUTE  # ~0.2 seconds
-        optimal_delay = max(0.25, min_delay_per_chunk * 1.25)  # 25% safety margin, minimum 0.25s
+    # Calculate optimal delay to space requests evenly
+    # With MAX_CHUNKS_SAFE = 5, we want to spread 10 API calls over time
+    # Using 1.0s delay between chunks to be more conservative
+    optimal_delay = 1.0  # 1.0 seconds between chunks for safety
     
-    estimated_duration_minutes = (total_api_calls / MAX_API_CALLS_PER_MINUTE)
+    # Calculate estimated duration
+    # Each chunk: weather request (~0.7s) + marine request (~0.7s) + delay (~1.0s) = ~2.4s per chunk
+    estimated_duration_seconds = chunk_count * 2.4
+    estimated_duration_minutes = estimated_duration_seconds / 60.0
+    
     if estimated_duration_minutes > 1.0:
-        logger.warning(f"  Estimated fetch duration: {estimated_duration_minutes:.1f} minutes (staying within {MAX_API_CALLS_PER_MINUTE} calls/min limit)")
+        logger.warning(f"  Estimated fetch duration: {estimated_duration_minutes:.1f} minutes")
+    logger.warning(f"  Using {optimal_delay:.2f}s delay between chunks (max {MAX_CHUNKS_SAFE} chunks = {total_api_calls} API calls)")
     
     for chunk_idx, chunk_start in enumerate(range(0, len(grid_points), MAX_LOCATIONS_PER_REQUEST)):
         chunk = grid_points[chunk_start:chunk_start + MAX_LOCATIONS_PER_REQUEST]
@@ -593,7 +741,7 @@ def fetch_regional_weather_grid(
         # Add delay between chunks to avoid rate limiting (except for first chunk)
         if chunk_idx > 0:
             delay = optimal_delay
-            logger.warning(f"  Waiting {delay:.2f}s before next chunk (rate limit: {MAX_CHUNKS_PER_MINUTE} chunks/min)...")
+            logger.warning(f"  Waiting {delay:.2f}s before next chunk (shared rate limit: {MAX_API_CALLS_PER_MINUTE} req/min)...")
             time.sleep(delay)
         
         lat_str = ','.join(str(lat) for lat, lng in chunk)
@@ -616,6 +764,7 @@ def fetch_regional_weather_grid(
                 if status == 429:
                     logger.error(f"  ERROR: Rate limit exceeded on chunk {chunk_idx + 1}!")
                     logger.error("  API may have blocked you. Stopping grid fetch.")
+                    logger.error(f"  Consider reducing grid resolution or waiting before retrying.")
                     break
                 elif status == 403:
                     logger.error(f"  ERROR: API access forbidden on chunk {chunk_idx + 1}!")
@@ -640,10 +789,13 @@ def fetch_regional_weather_grid(
                 logger.warning(f"  Warning: Marine API returned status {status}")
                 if status == 429:
                     logger.error(f"  ERROR: Rate limit exceeded on marine API chunk {chunk_idx + 1}!")
-                    logger.error("  API may have blocked you.")
+                    logger.error("  API may have blocked you. Stopping grid fetch.")
+                    logger.error(f"  Consider reducing grid resolution or waiting before retrying.")
+                    break
                 elif status == 403:
                     logger.error(f"  ERROR: Marine API access forbidden on chunk {chunk_idx + 1}!")
-                    logger.error("  You may be blocked.")
+                    logger.error("  You may be blocked. Stopping grid fetch.")
+                    break
             
             marine_response_data = marine_response.json() if marine_response.ok else []
             
