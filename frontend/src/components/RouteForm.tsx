@@ -58,23 +58,6 @@ export default function RouteForm({
         Route Planner
       </h2>
 
-      {/* Instructions */}
-      <div className="mb-4 p-3 bg-slate-900/50 rounded-lg text-sm">
-        {!startPoint ? (
-          <p className="text-emerald-400">
-            <span className="font-semibold">Step 1:</span> Click on the map to set your start point
-          </p>
-        ) : !endPoint ? (
-          <p className="text-amber-400">
-            <span className="font-semibold">Step 2:</span> Click on the map to set your destination
-          </p>
-        ) : (
-          <p className="text-sky-400">
-            <span className="font-semibold">Step 3:</span> Select boat type and calculate routes!
-          </p>
-        )}
-      </div>
-
       {/* Coordinates display */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-slate-900/50 rounded-lg p-3">
