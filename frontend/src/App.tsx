@@ -11,6 +11,17 @@ function App() {
   const [startPoint, setStartPoint] = useState<Coordinates | null>(null);
   const [endPoint, setEndPoint] = useState<Coordinates | null>(null);
   const [boatType, setBoatType] = useState<BoatType>('sailboat');
+  // Default to current time in ISO format (YYYY-MM-DDTHH:mm)
+  const [departureTime, setDepartureTime] = useState<string>(() => {
+    const now = new Date();
+    // Format as YYYY-MM-DDTHH:mm for datetime-local input
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  });
 
   // State for API response
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -34,10 +45,14 @@ function App() {
     setSelectedRouteIndex(null);
 
     try {
+      // Convert datetime-local format to ISO string for API
+      const departureTimeISO = new Date(departureTime).toISOString();
+      
       const response = await calculateRoutes({
         start: startPoint,
         end: endPoint,
         boat_type: boatType,
+        departure_time: departureTimeISO,
       });
       
       console.log('Routes received:', response.routes);
@@ -101,9 +116,11 @@ function App() {
               startPoint={startPoint}
               endPoint={endPoint}
               boatType={boatType}
+              departureTime={departureTime}
               loading={loading}
               hasRoutes={routes.length > 0}
               onBoatTypeChange={setBoatType}
+              onDepartureTimeChange={setDepartureTime}
               onCalculate={handleCalculate}
               onClear={handleClear}
             />

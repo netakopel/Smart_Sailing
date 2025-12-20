@@ -25,7 +25,7 @@ Based on algorithms used in professional sailing software (OpenCPN, Expedition, 
 
 import math
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Tuple, Optional, Set
 from dataclasses import dataclass, field
 
@@ -345,6 +345,9 @@ def reconstruct_path(
     waypoints = []
     for point in path_points:
         arrival_time = departure_time + timedelta(hours=point.time_hours)
+        # Ensure timezone-aware for ISO format
+        if arrival_time.tzinfo is None:
+            arrival_time = arrival_time.replace(tzinfo=timezone.utc)
         waypoints.append(Waypoint(
             position=Coordinates(lat=point.position.lat, lng=point.position.lng),
             estimated_arrival=arrival_time.isoformat(),
@@ -381,6 +384,9 @@ def reconstruct_path(
             
             final_time_hours = final_point.time_hours + (distance_to_dest / avg_speed)
             final_arrival = departure_time + timedelta(hours=final_time_hours)
+            # Ensure timezone-aware for ISO format
+            if final_arrival.tzinfo is None:
+                final_arrival = final_arrival.replace(tzinfo=timezone.utc)
             
             logger.info(f"  Final segment speed: {avg_speed:.1f}kt")
             logger.info(f"  Final segment time: {(distance_to_dest / avg_speed):.2f}h")
@@ -626,8 +632,12 @@ def calculate_isochrone_route(
     logger.info(f"End: ({request.end.lat:.3f}, {request.end.lng:.3f})")
     logger.info(f"Boat: {request.boat_type.value}")
     
-    # Parse departure time
-    departure_time = datetime.fromisoformat(request.departure_time.replace('Z', '+00:00'))
+    # Parse departure time and ensure it's timezone-aware (UTC)
+    departure_time_str = request.departure_time.replace('Z', '+00:00')
+    departure_time = datetime.fromisoformat(departure_time_str)
+    # Ensure timezone-aware (UTC if naive)
+    if departure_time.tzinfo is None:
+        departure_time = departure_time.replace(tzinfo=timezone.utc)
     
     # Initialize algorithm state
     state = IsochroneState()

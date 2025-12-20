@@ -1,12 +1,15 @@
 import type { Coordinates, BoatType } from '../types';
+import DateTimePicker from './DateTimePicker';
 
 interface RouteFormProps {
   startPoint: Coordinates | null;
   endPoint: Coordinates | null;
   boatType: BoatType;
+  departureTime: string;
   loading: boolean;
   hasRoutes: boolean;
   onBoatTypeChange: (type: BoatType) => void;
+  onDepartureTimeChange: (time: string) => void;
   onCalculate: () => void;
   onClear: () => void;
 }
@@ -36,9 +39,11 @@ export default function RouteForm({
   startPoint,
   endPoint,
   boatType,
+  departureTime,
   loading,
   hasRoutes,
   onBoatTypeChange,
+  onDepartureTimeChange,
   onCalculate,
   onClear,
 }: RouteFormProps) {
@@ -92,6 +97,21 @@ export default function RouteForm({
             <p className="text-slate-500 text-sm">Not set</p>
           )}
         </div>
+      </div>
+
+      {/* Departure time selector */}
+      <div className="mb-4">
+        <label className="text-xs text-slate-400 uppercase tracking-wide mb-2 block font-medium">
+          Departure Time
+        </label>
+        <DateTimePicker
+          value={departureTime}
+          onChange={onDepartureTimeChange}
+          disabled={loading}
+        />
+        <p className="text-xs text-slate-500/80 mt-2 ml-1">
+          Weather forecast will be based on this time
+        </p>
       </div>
 
       {/* Boat type selector */}
