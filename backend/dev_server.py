@@ -69,6 +69,7 @@ def route_to_dict(route):
             {
                 "position": {"lat": wp.position.lat, "lng": wp.position.lng},
                 "estimatedArrival": wp.estimated_arrival,
+                "heading": wp.heading,  # Heading used to reach this waypoint (from previous waypoint)
                 "weather": {
                     "windSpeed": wp.weather.wind_speed,
                     "windSustained": wp.weather.wind_sustained,

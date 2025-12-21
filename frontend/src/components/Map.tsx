@@ -60,6 +60,7 @@ interface MapProps {
   onStartPointChange: (coords: Coordinates) => void;
   onEndPointChange: (coords: Coordinates) => void;
   highlightedNoGoZone?: number | null;  // Waypoint index to highlight
+  highlightedWaypoint?: number | null;  // Waypoint index to highlight
   weatherGrid?: WeatherGrid | null;  // Weather grid points for visualization
 }
 
@@ -109,6 +110,7 @@ export default function Map({
   onStartPointChange,
   onEndPointChange,
   highlightedNoGoZone,
+  highlightedWaypoint,
   weatherGrid,
 }: MapProps) {
   // State for showing/hiding weather grid
@@ -182,8 +184,8 @@ export default function Map({
           onEndPointChange={onEndPointChange}
         />
 
-        {/* Start marker */}
-        {startPoint && (
+        {/* Start marker - only show when no routes calculated */}
+        {startPoint && routes.length === 0 && (
           <Marker position={[startPoint.lat, startPoint.lng]} icon={startIcon}>
             <Popup>
               <span className="font-semibold text-green-600">Start Point</span>
@@ -193,8 +195,8 @@ export default function Map({
           </Marker>
         )}
 
-        {/* End marker */}
-        {endPoint && (
+        {/* End marker - only show when no routes calculated */}
+        {endPoint && routes.length === 0 && (
           <Marker position={[endPoint.lat, endPoint.lng]} icon={endIcon}>
             <Popup>
               <span className="font-semibold text-red-600">End Point</span>
@@ -269,6 +271,53 @@ export default function Map({
                 }
               });
             }
+            
+            // Fourth pass: render waypoint markers
+            route.waypoints.forEach((waypoint, wpIndex) => {
+              const position: LatLngExpression = [waypoint.position.lat, waypoint.position.lng];
+              const isHighlighted = highlightedWaypoint === wpIndex;
+              const isStart = wpIndex === 0;
+              const isEnd = wpIndex === route.waypoints.length - 1;
+              
+              polylines.push(
+                <CircleMarker
+                  key={`waypoint-${selectedRouteIndex}-${wpIndex}`}
+                  center={position}
+                  radius={isHighlighted ? 6 : 4}
+                  pathOptions={{
+                    color: isStart ? '#22c55e' : isEnd ? '#ef4444' : '#3b82f6',
+                    fillColor: isStart ? '#22c55e' : isEnd ? '#ef4444' : '#3b82f6',
+                    fillOpacity: isHighlighted ? 1.0 : 0.7,
+                    weight: isHighlighted ? 3 : 2,
+                  }}
+                >
+                  <Popup>
+                    <div className="bg-slate-900 text-white rounded p-2">
+                      <p className="font-bold text-blue-400">
+                        Waypoint {wpIndex + 1}
+                        {isStart && <span className="text-green-400 ml-2">🚩 Start</span>}
+                        {isEnd && <span className="text-red-400 ml-2">🏁 End</span>}
+                      </p>
+                      <p className="text-sm">{waypoint.position.lat.toFixed(4)}°, {waypoint.position.lng.toFixed(4)}°</p>
+                      {waypoint.heading !== null && !isStart && (
+                        <p className="text-sm mt-1">
+                          <span className="text-cyan-400">⛵ Boat Heading:</span> {waypoint.heading.toFixed(0)}°
+                        </p>
+                      )}
+                      {waypoint.weather && (
+                        <>
+                          <p className="text-sm">
+                            <span className="text-blue-300">💨 Wind From:</span> {waypoint.weather.windDirection.toFixed(0)}°
+                          </p>
+                          <p className="text-sm">Wind Speed: {waypoint.weather.windSpeed.toFixed(0)} kt</p>
+                          <p className="text-sm">Waves: {waypoint.weather.waveHeight.toFixed(1)} m</p>
+                        </>
+                      )}
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              );
+            });
           }
           
           return polylines;

@@ -20,6 +20,7 @@ export type Waypoint = {
   position: Coordinates;
   weather: WeatherData | null;
   estimatedArrival: string;
+  heading: number | null;  // Heading used to reach this waypoint (degrees, 0-360)
 };
 
 export type NoGoZoneViolation = {

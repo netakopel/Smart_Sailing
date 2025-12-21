@@ -82,101 +82,38 @@ function downloadCSV(csvContent: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-// Color palette for routes - matches Map.tsx
-const ROUTE_COLOR_CLASSES = [
-  { color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500' },      // Blue
-  { color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500' },   // Green
-  { color: 'text-orange-400', bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500' },// Orange
-  { color: 'text-purple-400', bgColor: 'bg-purple-500/10', borderColor: 'border-purple-500' },// Purple
-  { color: 'text-pink-400', bgColor: 'bg-pink-500/10', borderColor: 'border-pink-500' },      // Pink
-  { color: 'text-teal-400', bgColor: 'bg-teal-500/10', borderColor: 'border-teal-500' },      // Teal
-  { color: 'text-amber-400', bgColor: 'bg-amber-500/10', borderColor: 'border-amber-500' },   // Amber
-  { color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500' },         // Red
-  { color: 'text-cyan-400', bgColor: 'bg-cyan-500/10', borderColor: 'border-cyan-500' },      // Cyan
-  { color: 'text-violet-400', bgColor: 'bg-violet-500/10', borderColor: 'border-violet-500' },// Violet
-];
-
-// Helper to get color by index
-const getRouteColorClass = (index: number) => {
-  return ROUTE_COLOR_CLASSES[index % ROUTE_COLOR_CLASSES.length];
-};
-
-function ScoreBadge({ score }: { score: number }) {
-  let colorClass = 'bg-red-500';
-  if (score >= 80) colorClass = 'bg-emerald-500';
-  else if (score >= 60) colorClass = 'bg-yellow-500';
-  else if (score >= 40) colorClass = 'bg-orange-500';
-
-  return (
-    <div className={`${colorClass} text-white font-bold text-lg px-3 py-1 rounded-full shadow-lg`}>
-      {score}
-    </div>
-  );
-}
-
 function RouteCard({ 
   route, 
-  index, 
-  colorIndex,
-  isSelected, 
-  onSelect,
-  onNoGoZoneClick
+  onNoGoZoneClick,
+  onWaypointClick
 }: { 
   route: Route; 
-  index: number;
-  colorIndex: number;
-  isSelected: boolean;
-  onSelect: () => void;
   onNoGoZoneClick?: (segmentIndex: number) => void;
+  onWaypointClick?: (waypointIndex: number) => void;
 }) {
-  const info = getRouteColorClass(colorIndex);
-  const isRecommended = index === 0; // First route (highest score) is recommended
+  const windCompass = (degrees: number): string => {
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const index = Math.round(degrees / 45) % 8;
+    return directions[index];
+  };
 
   return (
-    <div
-      onClick={onSelect}
-      className={`relative p-4 rounded-xl cursor-pointer transition-all duration-300 border-2 flex flex-col
-        ${isSelected 
-          ? `${info.bgColor} ${info.borderColor} shadow-lg scale-[1.01]` 
-          : 'bg-slate-800/60 border-slate-700 hover:border-slate-500'
-        }`}
-    >
-      {/* Recommended badge */}
-      {isRecommended && (
-        <div className="absolute -top-2 -right-2 bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 text-xs font-bold px-2 py-1 rounded-full shadow-lg">
-          ⭐ BEST
-        </div>
-      )}
-
+    <div className="relative p-6 rounded-xl bg-slate-800/60 border-2 border-slate-700 shadow-lg">
       {/* Header */}
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <h3 className={`font-bold text-lg ${info.color}`}>{route.name}</h3>
-          <p className="text-slate-400 text-sm">{route.estimatedTime}</p>
-        </div>
-        <ScoreBadge score={route.score} />
+      <div className="mb-4">
+        <h3 className="font-bold text-xl text-blue-400 flex items-center gap-2">
+          <span>📍</span>
+          Waypoints & Weather Details
+        </h3>
+        <p className="text-slate-400 text-sm mt-1">Estimated Time: {route.estimatedTime}</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
-        <div className="bg-slate-900/50 rounded-lg p-2">
-          <p className="text-slate-500 text-xs">Distance</p>
-          <p className="text-white font-semibold">{route.distance.toFixed(1)} km</p>
-        </div>
-        <div className="bg-slate-900/50 rounded-lg p-2">
-          <p className="text-slate-500 text-xs">Waypoints</p>
-          <p className="text-white font-semibold">{route.waypoints.length}</p>
-        </div>
-      </div>
-
-      {/* Scrollable content area for warnings and pros/cons */}
-      <div className={`overflow-y-auto ${isSelected ? 'max-h-48' : 'max-h-32'}`}>
-        {/* No-Go Zone Warnings (special handling) */}
-        {(() => {
-          const violations = route.noGoZoneViolations;
-          return violations && violations.length > 0 && (
-          <div className="mb-3 space-y-1">
-            <p className="text-red-400 text-xs font-semibold mb-1">🔴 NO-GO ZONES ({violations.length})</p>
+      {/* No-Go Zone Warnings */}
+      {(() => {
+        const violations = route.noGoZoneViolations;
+        return violations && violations.length > 0 && (
+          <div className="mb-4 space-y-1">
+            <p className="text-red-400 text-sm font-semibold mb-2">🔴 NO-GO ZONES ({violations.length})</p>
             {violations.map((violation: NoGoZoneViolation, i: number) => (
               <button
                 key={i}
@@ -192,41 +129,105 @@ function RouteCard({
             ))}
           </div>
         );
-        })()}
+      })()}
 
-        {/* Regular Warnings */}
-        {route.warnings.length > 0 && (
-          <div className="mb-3 space-y-1">
-            {route.warnings.map((warning, i) => (
-              <div key={i} className="flex items-start gap-2 text-amber-400 text-xs bg-amber-500/10 rounded p-2">
-                <span className="shrink-0">⚠️</span>
-                <span>{warning}</span>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Regular Warnings */}
+      {route.warnings.length > 0 && (
+        <div className="mb-4 space-y-1">
+          {route.warnings.map((warning, i) => (
+            <div key={i} className="flex items-start gap-2 text-amber-400 text-xs bg-amber-500/10 rounded p-2">
+              <span className="shrink-0">⚠️</span>
+              <span>{warning}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* Pros & Cons (shown when selected) */}
-        {isSelected && (
-          <div className="pt-3 border-t border-slate-700 space-y-2">
-            {route.pros.length > 0 && (
-              <div>
-                <p className="text-emerald-400 text-xs font-semibold mb-1">✓ Advantages</p>
-                {route.pros.map((pro, i) => (
-                  <p key={i} className="text-slate-300 text-xs ml-3">• {pro}</p>
-                ))}
+      {/* Waypoints with Weather */}
+      <div>
+        <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto pr-2">
+          {route.waypoints.map((waypoint, idx) => (
+            <div 
+              key={idx} 
+              onClick={() => onWaypointClick?.(idx)}
+              className="bg-slate-900/50 rounded-lg p-3 border border-slate-700 cursor-pointer hover:border-blue-500 transition-colors"
+            >
+              {/* Waypoint Header */}
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <p className="text-blue-400 font-semibold text-sm">
+                    Waypoint {idx + 1}
+                    {idx === 0 && <span className="text-green-400 ml-2">🚩 Start</span>}
+                    {idx === route.waypoints.length - 1 && <span className="text-red-400 ml-2">🏁 End</span>}
+                  </p>
+                  <p className="text-white text-sm font-semibold mt-1">
+                    {waypoint.position.lat.toFixed(4)}°, {waypoint.position.lng.toFixed(4)}°
+                  </p>
+                </div>
+                <p className="text-slate-400 text-xs">
+                  {formatLocalTime(waypoint.estimatedArrival)}
+                </p>
               </div>
-            )}
-            {route.cons.length > 0 && (
-              <div>
-                <p className="text-rose-400 text-xs font-semibold mb-1">✗ Concerns</p>
-                {route.cons.map((con, i) => (
-                  <p key={i} className="text-slate-300 text-xs ml-3">• {con}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+
+              {/* Weather Data */}
+              {waypoint.weather && (
+                <div className="space-y-2 mt-2">
+                  {/* Primary Weather Info - Highlighted */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-slate-800/50 rounded p-2 flex items-center gap-2">
+                      <span>💨</span>
+                      <div>
+                        <p className="text-slate-500 text-xs">Wind</p>
+                        <p className="text-white text-sm font-semibold">
+                          {waypoint.weather.windSpeed.toFixed(0)} kt {windCompass(waypoint.weather.windDirection)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-slate-800/50 rounded p-2 flex items-center gap-2">
+                      <span>🌊</span>
+                      <div>
+                        <p className="text-slate-500 text-xs">Waves</p>
+                        <p className="text-white text-sm font-semibold">
+                          {waypoint.weather.waveHeight.toFixed(1)} m
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Secondary Weather Info */}
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="bg-slate-800/30 rounded p-1.5 text-center">
+                      <p className="text-slate-500">Gusts</p>
+                      <p className="text-white font-semibold">
+                        {waypoint.weather.windGusts.toFixed(0)} kt
+                      </p>
+                    </div>
+                    <div className="bg-slate-800/30 rounded p-1.5 text-center">
+                      <p className="text-slate-500">🌡️ Temp</p>
+                      <p className="text-white font-semibold">
+                        {waypoint.weather.temperature.toFixed(0)}°C
+                      </p>
+                    </div>
+                    <div className="bg-slate-800/30 rounded p-1.5 text-center">
+                      <p className="text-slate-500">👁️ Vis</p>
+                      <p className="text-white font-semibold">
+                        {waypoint.weather.visibility.toFixed(0)} km
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Precipitation if present */}
+                  {waypoint.weather.precipitation > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-sky-400 bg-sky-500/10 rounded p-2">
+                      <span>🌧️</span>
+                      <span>{waypoint.weather.precipitation.toFixed(1)} mm rain</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -234,9 +235,10 @@ function RouteCard({
 
 interface RouteCardsPropsWithCallbacks extends RouteCardsProps {
   onNoGoZoneClick?: (routeIndex: number, segmentIndex: number) => void;
+  onWaypointClick?: (waypointIndex: number) => void;
 }
 
-export default function RouteCards({ routes, selectedIndex, onSelectRoute, onNoGoZoneClick }: RouteCardsPropsWithCallbacks) {
+export default function RouteCards({ routes, selectedIndex, onNoGoZoneClick, onWaypointClick }: RouteCardsPropsWithCallbacks) {
   if (routes.length === 0) {
     return (
       <div className="bg-slate-800/60 rounded-xl p-6 text-center border border-slate-700">
@@ -249,16 +251,14 @@ export default function RouteCards({ routes, selectedIndex, onSelectRoute, onNoG
     );
   }
 
-  // Sort routes by score (highest first), but keep track of original indices
-  const sortedRoutesWithIndices = routes
-    .map((route, originalIndex) => ({ route, originalIndex }))
-    .sort((a, b) => b.route.score - a.route.score);
+  // Get the selected route, or default to the first route if none selected
+  const selectedRoute = selectedIndex !== null ? routes[selectedIndex] : routes[0];
 
-  // Handle CSV download
+  // Handle CSV download for the selected route only
   const handleDownloadCSV = () => {
-    const csvContent = routesToCSV(routes);
+    const csvContent = routesToCSV([selectedRoute]);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `routes-waypoints-${timestamp}.csv`;
+    const filename = `route-waypoints-${timestamp}.csv`;
     downloadCSV(csvContent, filename);
   };
 
@@ -266,34 +266,24 @@ export default function RouteCards({ routes, selectedIndex, onSelectRoute, onNoG
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-white font-semibold flex items-center gap-2">
-          <span>📊</span>
-          Route Options
-          <span className="text-slate-500 text-sm font-normal">({routes.length} routes)</span>
+          <span>🗺️</span>
+          Route Details
         </h3>
         <button
           onClick={handleDownloadCSV}
           className="bg-gradient-to-r from-green-300 via-emerald-400 to-teal-400 hover:from-green-400 hover:via-emerald-500 hover:to-teal-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg hover:shadow-xl"
-          title="Download all waypoints as CSV"
+          title="Download waypoints as CSV"
         >
           <span>⬇️</span>
           <span>Download CSV</span>
         </button>
       </div>
       
-      <div className="flex flex-col gap-3 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
-        {sortedRoutesWithIndices.map(({ route, originalIndex }, sortedIndex) => (
-          <div key={`route-${originalIndex}`} className="w-full">
-            <RouteCard
-              route={route}
-              index={sortedIndex}
-              colorIndex={originalIndex}
-              isSelected={selectedIndex === originalIndex}
-              onSelect={() => onSelectRoute(originalIndex)}
-              onNoGoZoneClick={(segmentIndex) => onNoGoZoneClick?.(originalIndex, segmentIndex)}
-            />
-          </div>
-        ))}
-      </div>
+      <RouteCard
+        route={selectedRoute}
+        onNoGoZoneClick={(segmentIndex) => onNoGoZoneClick?.(selectedIndex ?? 0, segmentIndex)}
+        onWaypointClick={onWaypointClick}
+      />
     </div>
   );
 }

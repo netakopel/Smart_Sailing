@@ -34,6 +34,9 @@ function App() {
   
   // State for no-go zone highlighting
   const [highlightedNoGoZone, setHighlightedNoGoZone] = useState<number | null>(null);
+  
+  // State for waypoint highlighting
+  const [highlightedWaypoint, setHighlightedWaypoint] = useState<number | null>(null);
 
   // Handle route calculation
   const handleCalculate = async () => {
@@ -153,6 +156,7 @@ function App() {
                 onStartPointChange={setStartPoint}
                 onEndPointChange={setEndPoint}
                 highlightedNoGoZone={highlightedNoGoZone}
+                highlightedWaypoint={highlightedWaypoint}
                 weatherGrid={weatherGrid}
               />
             </div>
@@ -165,6 +169,11 @@ function App() {
               onNoGoZoneClick={(routeIndex, segmentIndex) => {
                 setSelectedRouteIndex(routeIndex);
                 setHighlightedNoGoZone(segmentIndex);
+                setHighlightedWaypoint(null);
+              }}
+              onWaypointClick={(waypointIndex) => {
+                setHighlightedWaypoint(waypointIndex);
+                setHighlightedNoGoZone(null);
               }}
             />
           </div>
