@@ -36,6 +36,7 @@ from route_generator import (
 )
 from weather_fetcher import fetch_regional_weather_grid, interpolate_weather, calculate_forecast_hours_needed
 from polars import get_boat_speed, calculate_wind_angle, normalize_angle, is_in_no_go_zone
+from land_detector import is_land, is_close_to_land, DEFAULT_LAND_BUFFER_NM
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -226,14 +227,17 @@ def should_prune_point(
     point: IsochronePoint,
     state: IsochroneState,
     destination: Coordinates,
-    route_distance: float
+    route_distance: float,
+    start: Optional[Coordinates] = None
 ) -> bool:
     """
     Decide whether to prune (discard) a point to reduce computation.
     
     Pruning strategies:
-    1. Grid-based: If we've already reached this grid cell faster, prune
-    2. Distance-based: If point is much farther from goal than best so far, prune
+    1. Land detection: If point is on land, prune immediately (boats can't sail on land)
+    2. Close to land: If point is within buffer distance of land (except near start/end)
+    3. Grid-based: If we've already reached this grid cell faster, prune
+    4. Distance-based: If point is much farther from goal than best so far, prune
     
     Note: No-go zone filtering happens BEFORE point creation in propagate_isochrone(),
     so no need to check it here.
@@ -243,10 +247,33 @@ def should_prune_point(
         state: Current algorithm state
         destination: Goal position
         route_distance: Total route distance in nm (used for distance-based pruning threshold)
+        start: Starting position (optional, for land buffer exception near start)
         
     Returns:
         True if point should be pruned (discarded)
     """
+    # Strategy 0: Land detection - prune points on land immediately
+    # Boats can't sail on land, so these points are invalid
+    if is_land(point.position):
+        return True
+    
+    # Strategy 0.5: Close to land detection - prune points too close to coastlines
+    # Exception: Don't prune if point is close to start or end (it's normal to be near land there)
+    # Use a slightly larger threshold for "close to start/end" to be safe
+    START_END_EXCEPTION_DISTANCE_NM = 5.0  # Don't apply buffer within 5nm of start/end
+    
+    distance_to_start = calculate_distance(point.position, start) if start else float('inf')
+    distance_to_end = calculate_distance(point.position, destination)
+    
+    # Only check "close to land" if we're not near start or end
+    is_near_start_or_end = (distance_to_start < START_END_EXCEPTION_DISTANCE_NM or 
+                           distance_to_end < START_END_EXCEPTION_DISTANCE_NM)
+    
+    if not is_near_start_or_end:
+        # Check if point is too close to land (within buffer distance)
+        if is_close_to_land(point.position, buffer_distance_nm=DEFAULT_LAND_BUFFER_NM):
+            return True
+    
     # Calculate distance to goal for adaptive strategies
     distance_to_goal = calculate_distance(point.position, destination)
     
@@ -520,6 +547,7 @@ def propagate_isochrone(
     departure_time: datetime,
     state: IsochroneState,
     route_distance: float,
+    start: Coordinates,
     max_size: int = MAX_ISOCHRONE_SIZE
 ) -> List[IsochronePoint]:
     """
@@ -553,6 +581,7 @@ def propagate_isochrone(
         'skipped_cone': 0,
         'skipped_no_go': 0,
         'skipped_zero_speed': 0,
+        'skipped_land': 0,
         'pruned': 0,
         'added': 0
     }
@@ -601,6 +630,11 @@ def propagate_isochrone(
             # Calculate new position
             new_position = calculate_destination(point.position, distance_nm, heading)
             
+            # Optimization 0: Skip land positions (boats can't sail on land)
+            if is_land(new_position):
+                debug_counters['skipped_land'] += 1
+                continue
+            
             # Now get weather at the DESTINATION position and time (where we'll arrive)
             arrival_time = departure_time + timedelta(hours=point.time_hours + time_step_hours)
             destination_weather = interpolate_weather(new_position, arrival_time, weather_grid)
@@ -636,7 +670,7 @@ def propagate_isochrone(
             )
             
             # Check if we should prune this point
-            if should_prune_point(new_point, state, destination, route_distance):
+            if should_prune_point(new_point, state, destination, route_distance, start):
                 debug_counters['pruned'] += 1
                 continue
             
@@ -652,6 +686,7 @@ def propagate_isochrone(
         logger.warning(f"    Skipped (cone): {debug_counters['skipped_cone']}")
         logger.warning(f"    Skipped (no-go): {debug_counters['skipped_no_go']}")
         logger.warning(f"    Skipped (zero speed): {debug_counters['skipped_zero_speed']}")
+        logger.warning(f"    Skipped (land): {debug_counters['skipped_land']}")
         logger.warning(f"    Pruned: {debug_counters['pruned']}")
         logger.warning(f"    Added: {debug_counters['added']}")
         if 'speeds' in debug_counters and debug_counters['speeds']:
@@ -664,10 +699,12 @@ def propagate_isochrone(
             if destination_bearing and current_isochrone:
                 logger.warning(f"    Bearing to goal: {destination_bearing:.0f}deg")
     
-    # Log pruning effectiveness
-    if debug_counters['pruned'] > 0:
+    # Log pruning effectiveness and land detection
+    if debug_counters['pruned'] > 0 or debug_counters['skipped_land'] > 0:
         prune_ratio = debug_counters['pruned'] / (debug_counters['pruned'] + debug_counters['added']) if (debug_counters['pruned'] + debug_counters['added']) > 0 else 0
         logger.debug(f"  Pruning: {debug_counters['pruned']} pruned, {debug_counters['added']} added ({prune_ratio*100:.1f}% pruned)")
+        if debug_counters['skipped_land'] > 0:
+            logger.debug(f"  Land detection: {debug_counters['skipped_land']} points skipped (on land)")
     
     # Always favor points closer to goal by sorting and limiting isochrone size
     if len(next_isochrone) > MAX_ISOCHRONE_GROWTH_WARNING:
@@ -871,7 +908,8 @@ def calculate_isochrone_route(
             time_step_hours=time_step,
             departure_time=departure_time,
             state=state,
-            route_distance=route_distance
+            route_distance=route_distance,
+            start=request.start
         )
         
         # Check if isochrone is empty (no reachable points - shouldn't happen)

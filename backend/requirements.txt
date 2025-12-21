@@ -1,4 +1,5 @@
 requests==2.31.0
 flask==3.0.0
 flask-cors==4.0.0
+global-land-mask==1.2.0
 
