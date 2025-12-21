@@ -128,7 +128,7 @@ export default function DateTimePicker({ value, onChange, disabled }: DateTimePi
       <div
         onClick={() => !disabled && setIsOpen(!isOpen)}
         className={`
-          w-full pl-12 pr-4 py-3.5 rounded-xl bg-slate-900/60 text-white border border-slate-700/50 
+          w-full pl-12 pr-4 py-4 rounded-xl bg-slate-900/60 text-white border border-slate-700/50 
           focus-within:border-sky-500/50 focus-within:bg-slate-900/80 focus-within:ring-2 focus-within:ring-sky-500/30 
           transition-all duration-200 backdrop-blur-sm cursor-pointer
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-slate-600/50'}

@@ -6,6 +6,17 @@ interface RouteCardsProps {
   onSelectRoute: (index: number) => void;
 }
 
+// Helper function to convert UTC ISO string to local time format
+function formatLocalTime(isoString: string): string {
+  const date = new Date(isoString);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
 // Utility function to convert routes to CSV
 function routesToCSV(routes: Route[]): string {
   // CSV headers
@@ -30,12 +41,14 @@ function routesToCSV(routes: Route[]): string {
 
   routes.forEach((route) => {
     route.waypoints.forEach((waypoint, index) => {
+      // Convert UTC ISO string to local time for CSV export
+      const localTime = formatLocalTime(waypoint.estimatedArrival);
       const row = [
         `"${route.name}"`,
         (index + 1).toString(),
         waypoint.position.lat.toString(),
         waypoint.position.lng.toString(),
-        `"${waypoint.estimatedArrival}"`,
+        `"${localTime}"`,
         waypoint.weather?.windSpeed.toString() ?? '',
         waypoint.weather?.windSustained.toString() ?? '',
         waypoint.weather?.windGusts.toString() ?? '',
