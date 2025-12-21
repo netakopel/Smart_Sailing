@@ -56,7 +56,7 @@ function App() {
       });
       
       console.log('Routes received:', response.routes);
-      response.routes.forEach((route: any, idx: number) => {
+      response.routes.forEach((route: Route, idx: number) => {
         console.log(`Route ${idx}:`, route.name, 'violations:', route.noGoZoneViolations);
       });
       setRoutes(response.routes);

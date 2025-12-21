@@ -119,7 +119,6 @@ export default function DateTimePicker({ value, onChange, disabled }: DateTimePi
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  const daysInMonth = new Date(selectedDate.year, selectedDate.month + 1, 0).getDate();
   const monthName = months[selectedDate.month];
 
   return (

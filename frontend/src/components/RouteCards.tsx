@@ -1,4 +1,4 @@
-import type { Route } from '../types';
+import type { Route, NoGoZoneViolation } from '../types';
 
 interface RouteCardsProps {
   routes: Route[];
@@ -173,11 +173,11 @@ function RouteCard({
       <div className={`overflow-y-auto ${isSelected ? 'max-h-48' : 'max-h-32'}`}>
         {/* No-Go Zone Warnings (special handling) */}
         {(() => {
-          const violations = (route as any).noGoZoneViolations;
+          const violations = route.noGoZoneViolations;
           return violations && violations.length > 0 && (
           <div className="mb-3 space-y-1">
             <p className="text-red-400 text-xs font-semibold mb-1">🔴 NO-GO ZONES ({violations.length})</p>
-            {violations.map((violation: any, i: number) => (
+            {violations.map((violation: NoGoZoneViolation, i: number) => (
               <button
                 key={i}
                 onClick={() => {
