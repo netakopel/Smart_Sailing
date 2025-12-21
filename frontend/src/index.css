@@ -6,6 +6,12 @@
   width: 100%;
 }
 
+/* Custom marker icon styling */
+.custom-marker-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
 /* Custom scrollbar for route cards */
 ::-webkit-scrollbar {
   width: 8px;

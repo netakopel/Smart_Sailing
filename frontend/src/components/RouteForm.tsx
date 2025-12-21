@@ -8,10 +8,13 @@ interface RouteFormProps {
   departureTime: string;
   loading: boolean;
   hasRoutes: boolean;
+  selectionMode: 'start' | 'end' | null;
   onBoatTypeChange: (type: BoatType) => void;
   onDepartureTimeChange: (time: string) => void;
   onCalculate: () => void;
   onClear: () => void;
+  onStartButtonClick: () => void;
+  onEndButtonClick: () => void;
 }
 
 const BOAT_OPTIONS: { value: BoatType; label: string; icon: string; description: string }[] = [
@@ -42,10 +45,13 @@ export default function RouteForm({
   departureTime,
   loading,
   hasRoutes,
+  selectionMode,
   onBoatTypeChange,
   onDepartureTimeChange,
   onCalculate,
   onClear,
+  onStartButtonClick,
+  onEndButtonClick,
 }: RouteFormProps) {
   const canCalculate = startPoint && endPoint && !loading;
   const showReset = hasRoutes && !loading;
@@ -58,28 +64,52 @@ export default function RouteForm({
         Route Planner
       </h2>
 
-      {/* Coordinates display */}
+      {/* Coordinates display - now clickable buttons */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-slate-900/50 rounded-lg p-3">
-          <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Start</p>
+        <button
+          onClick={onStartButtonClick}
+          className={`rounded-lg p-3 text-left transition-all duration-200 ${
+            selectionMode === 'start'
+              ? 'bg-emerald-500/10 ring-1 ring-white/40 shadow-sm'
+              : 'bg-slate-900/50 hover:bg-slate-800/70'
+          }`}
+        >
+          <p className={`text-xs uppercase tracking-wide mb-1 flex items-center gap-1 ${
+            selectionMode === 'start' ? 'text-emerald-400' : 'text-slate-400'
+          }`}>
+            Start
+            {selectionMode === 'start' && <span className="text-xs">📍</span>}
+          </p>
           {startPoint ? (
             <p className="text-emerald-400 font-mono text-sm">
               {startPoint.lat.toFixed(3)}, {startPoint.lng.toFixed(3)}
             </p>
           ) : (
-            <p className="text-slate-500 text-sm">Not set</p>
+            <p className="text-slate-500 text-sm">Click to select</p>
           )}
-        </div>
-        <div className="bg-slate-900/50 rounded-lg p-3">
-          <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">End</p>
+        </button>
+        <button
+          onClick={onEndButtonClick}
+          className={`rounded-lg p-3 text-left transition-all duration-200 ${
+            selectionMode === 'end'
+              ? 'bg-amber-500/10 ring-1 ring-white/40 shadow-sm'
+              : 'bg-slate-900/50 hover:bg-slate-800/70'
+          }`}
+        >
+          <p className={`text-xs uppercase tracking-wide mb-1 flex items-center gap-1 ${
+            selectionMode === 'end' ? 'text-amber-400' : 'text-slate-400'
+          }`}>
+            End
+            {selectionMode === 'end' && <span className="text-xs">📍</span>}
+          </p>
           {endPoint ? (
             <p className="text-amber-400 font-mono text-sm">
               {endPoint.lat.toFixed(3)}, {endPoint.lng.toFixed(3)}
             </p>
           ) : (
-            <p className="text-slate-500 text-sm">Not set</p>
+            <p className="text-slate-500 text-sm">Click to select</p>
           )}
-        </div>
+        </button>
       </div>
 
       {/* Departure time selector */}

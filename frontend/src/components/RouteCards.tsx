@@ -1,4 +1,4 @@
-import type { Route, NoGoZoneViolation } from '../types';
+import type { Route } from '../types';
 
 interface RouteCardsProps {
   routes: Route[];
@@ -84,11 +84,9 @@ function downloadCSV(csvContent: string, filename: string) {
 
 function RouteCard({ 
   route, 
-  onNoGoZoneClick,
   onWaypointClick
 }: { 
   route: Route; 
-  onNoGoZoneClick?: (segmentIndex: number) => void;
   onWaypointClick?: (waypointIndex: number) => void;
 }) {
   const windCompass = (degrees: number): string => {
@@ -107,29 +105,6 @@ function RouteCard({
         </h3>
         <p className="text-slate-400 text-sm mt-1">Estimated Time: {route.estimatedTime}</p>
       </div>
-
-      {/* No-Go Zone Warnings */}
-      {(() => {
-        const violations = route.noGoZoneViolations;
-        return violations && violations.length > 0 && (
-          <div className="mb-4 space-y-1">
-            <p className="text-red-400 text-sm font-semibold mb-2">🔴 NO-GO ZONES ({violations.length})</p>
-            {violations.map((violation: NoGoZoneViolation, i: number) => (
-              <button
-                key={i}
-                onClick={() => {
-                  console.log('Clicked no-go zone:', violation.segmentIndex);
-                  onNoGoZoneClick?.(violation.segmentIndex);
-                }}
-                className="w-full text-left flex items-start gap-2 text-red-300 text-xs bg-red-500/15 hover:bg-red-500/25 rounded p-2 cursor-pointer transition-colors"
-              >
-                <span className="shrink-0">📍</span>
-                <span>Segment {violation.segmentIndex}: Heading {violation.heading.toFixed(0)}° / Wind {violation.windAngle.toFixed(0)}°</span>
-              </button>
-            ))}
-          </div>
-        );
-      })()}
 
       {/* Regular Warnings */}
       {route.warnings.length > 0 && (
@@ -234,11 +209,10 @@ function RouteCard({
 }
 
 interface RouteCardsPropsWithCallbacks extends RouteCardsProps {
-  onNoGoZoneClick?: (routeIndex: number, segmentIndex: number) => void;
   onWaypointClick?: (waypointIndex: number) => void;
 }
 
-export default function RouteCards({ routes, selectedIndex, onNoGoZoneClick, onWaypointClick }: RouteCardsPropsWithCallbacks) {
+export default function RouteCards({ routes, selectedIndex, onWaypointClick }: RouteCardsPropsWithCallbacks) {
   if (routes.length === 0) {
     return (
       <div className="bg-slate-800/60 rounded-xl p-6 text-center border border-slate-700">
@@ -281,7 +255,6 @@ export default function RouteCards({ routes, selectedIndex, onNoGoZoneClick, onW
       
       <RouteCard
         route={selectedRoute}
-        onNoGoZoneClick={(segmentIndex) => onNoGoZoneClick?.(selectedIndex ?? 0, segmentIndex)}
         onWaypointClick={onWaypointClick}
       />
     </div>

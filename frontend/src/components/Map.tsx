@@ -1,37 +1,35 @@
 import { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Circle, CircleMarker, useMapEvents, Popup, useMap } from 'react-leaflet';
-import { Icon, DivIcon, type LatLngExpression } from 'leaflet';
+import { DivIcon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Coordinates, Route, WeatherGrid } from '../types';
 import { getUserLocation } from '../services/geolocation';
 
-// Fix for default marker icons in Leaflet with bundlers
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+// Create modern circular marker icons with pulse effect
+const createModernMarkerIcon = (color: string, darkColor: string) => {
+  return new DivIcon({
+    className: 'custom-marker-icon',
+    html: `
+      <div style="position: relative; width: 32px; height: 32px;">
+        <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+          <!-- Outer glow/shadow -->
+          <circle cx="16" cy="16" r="14" fill="${color}" opacity="0.3"/>
+          <!-- Main circle -->
+          <circle cx="16" cy="16" r="10" fill="${color}" stroke="white" stroke-width="3"/>
+          <!-- Inner dot -->
+          <circle cx="16" cy="16" r="4" fill="${darkColor}"/>
+        </svg>
+      </div>
+    `,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -16],
+  });
+};
 
-// Custom icons for start and end markers
-const startIcon = new Icon({
-  iconUrl: markerIcon,
-  iconRetinaUrl: markerIcon2x,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-  className: 'start-marker'
-});
-
-const endIcon = new Icon({
-  iconUrl: markerIcon,
-  iconRetinaUrl: markerIcon2x,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-  className: 'end-marker'
-});
+// Custom icons for start (green) and end (orange) markers
+const startIcon = createModernMarkerIcon('#22c55e', '#16a34a'); // Green
+const endIcon = createModernMarkerIcon('#f97316', '#ea580c'); // Orange
 
 // Route colors - expanded palette for multiple routes
 const ROUTE_COLOR_PALETTE = [
@@ -57,6 +55,7 @@ interface MapProps {
   endPoint: Coordinates | null;
   routes: Route[];
   selectedRouteIndex: number | null;
+  selectionMode: 'start' | 'end' | null;
   onStartPointChange: (coords: Coordinates) => void;
   onEndPointChange: (coords: Coordinates) => void;
   highlightedNoGoZone?: number | null;  // Waypoint index to highlight
@@ -66,24 +65,25 @@ interface MapProps {
 
 // Component to handle map clicks
 function MapClickHandler({ 
-  startPoint, 
+  selectionMode,
   onStartPointChange, 
   onEndPointChange 
 }: { 
-  startPoint: Coordinates | null;
+  selectionMode: 'start' | 'end' | null;
   onStartPointChange: (coords: Coordinates) => void;
   onEndPointChange: (coords: Coordinates) => void;
 }) {
   useMapEvents({
     click: (e) => {
       const coords: Coordinates = { lat: e.latlng.lat, lng: e.latlng.lng };
-      if (!startPoint) {
+      if (selectionMode === 'start') {
         onStartPointChange(coords);
-      } else {
+      } else if (selectionMode === 'end') {
         onEndPointChange(coords);
       }
     },
   });
+  
   return null;
 }
 
@@ -200,6 +200,7 @@ export default function Map({
   endPoint,
   routes,
   selectedRouteIndex,
+  selectionMode,
   onStartPointChange,
   onEndPointChange,
   highlightedNoGoZone,
@@ -207,7 +208,7 @@ export default function Map({
   weatherGrid,
 }: MapProps) {
   // State for showing/hiding weather grid
-  const [showGrid, setShowGrid] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
   
   // State for selected hour index
   const [selectedHourIndex, setSelectedHourIndex] = useState(0);
@@ -409,18 +410,18 @@ export default function Map({
     <div className="h-full w-full rounded-xl overflow-hidden shadow-2xl border border-slate-700 relative">
       {/* Weather grid controls */}
       {weatherGrid && weatherGrid.gridPoints && weatherGrid.gridPoints.length > 0 && (
-        <div className="absolute top-2 right-2 z-[1000] flex flex-col gap-2">
+        <div className="absolute top-2 right-2 z-[1000] flex flex-col gap-2 w-[260px]">
           {/* Apple-style toggle for grid visibility */}
           <div className="bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-3">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <span className="text-lg">🌐</span>
-                <div className="text-white text-sm font-medium">Wind Grid</div>
+                <div className="text-white text-sm font-medium whitespace-nowrap">Wind Grid</div>
               </div>
               {/* Apple-style toggle switch */}
               <button
                 onClick={() => setShowGrid(!showGrid)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 ${
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none flex-shrink-0 ${
                   showGrid ? 'bg-blue-500' : 'bg-slate-600'
                 }`}
                 role="switch"
@@ -530,7 +531,7 @@ export default function Map({
       <MapContainer
         center={mapCenter}
         zoom={defaultZoom}
-        className="h-full w-full"
+        className={`h-full w-full ${selectionMode ? 'selection-mode' : ''}`}
         style={{ background: '#0f172a' }}
       >
         {/* Map tiles - using CartoDB dark theme for nautical feel */}
@@ -544,7 +545,7 @@ export default function Map({
 
         {/* Click handler for setting points */}
         <MapClickHandler
-          startPoint={startPoint}
+          selectionMode={selectionMode}
           onStartPointChange={onStartPointChange}
           onEndPointChange={onEndPointChange}
         />

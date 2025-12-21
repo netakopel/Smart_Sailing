@@ -37,6 +37,9 @@ function App() {
   
   // State for waypoint highlighting
   const [highlightedWaypoint, setHighlightedWaypoint] = useState<number | null>(null);
+  
+  // State for selection mode - which point is being selected
+  const [selectionMode, setSelectionMode] = useState<'start' | 'end' | null>('start');
 
   // Handle route calculation
   const handleCalculate = async () => {
@@ -87,6 +90,34 @@ function App() {
     setSelectedRouteIndex(null);
     setError(null);
     setWeatherGrid(null);
+    setSelectionMode('start');
+  };
+  
+  // Handle start point change
+  const handleStartPointChange = (coords: Coordinates) => {
+    setStartPoint(coords);
+    // After setting start, move to end selection
+    if (!endPoint) {
+      setSelectionMode('end');
+    } else {
+      setSelectionMode(null);
+    }
+  };
+  
+  // Handle end point change
+  const handleEndPointChange = (coords: Coordinates) => {
+    setEndPoint(coords);
+    setSelectionMode(null);
+  };
+  
+  // Handle clicking on Start button to re-select
+  const handleStartButtonClick = () => {
+    setSelectionMode('start');
+  };
+  
+  // Handle clicking on End button to re-select
+  const handleEndButtonClick = () => {
+    setSelectionMode('end');
   };
 
   // Get selected route for weather panel
@@ -122,10 +153,13 @@ function App() {
               departureTime={departureTime}
               loading={loading}
               hasRoutes={routes.length > 0}
+              selectionMode={selectionMode}
               onBoatTypeChange={setBoatType}
               onDepartureTimeChange={setDepartureTime}
               onCalculate={handleCalculate}
               onClear={handleClear}
+              onStartButtonClick={handleStartButtonClick}
+              onEndButtonClick={handleEndButtonClick}
             />
 
             {/* Error display */}
@@ -153,8 +187,9 @@ function App() {
                 endPoint={endPoint}
                 routes={routes}
                 selectedRouteIndex={selectedRouteIndex}
-                onStartPointChange={setStartPoint}
-                onEndPointChange={setEndPoint}
+                selectionMode={selectionMode}
+                onStartPointChange={handleStartPointChange}
+                onEndPointChange={handleEndPointChange}
                 highlightedNoGoZone={highlightedNoGoZone}
                 highlightedWaypoint={highlightedWaypoint}
                 weatherGrid={weatherGrid}
@@ -166,11 +201,6 @@ function App() {
               routes={routes}
               selectedIndex={selectedRouteIndex}
               onSelectRoute={setSelectedRouteIndex}
-              onNoGoZoneClick={(routeIndex, segmentIndex) => {
-                setSelectedRouteIndex(routeIndex);
-                setHighlightedNoGoZone(segmentIndex);
-                setHighlightedWaypoint(null);
-              }}
               onWaypointClick={(waypointIndex) => {
                 setHighlightedWaypoint(waypointIndex);
                 setHighlightedNoGoZone(null);

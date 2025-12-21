@@ -197,15 +197,6 @@ export default function DateTimePicker({ value, onChange, disabled }: DateTimePi
                       {monthName}
                     </div>
                   </div>
-                  
-                  {/* Joke/Explanation */}
-                  <div className="mt-1 mb-2 p-2 bg-slate-900/40 rounded-lg border border-slate-700/30">
-                    <p className="text-xs text-slate-400 italic text-center">
-                      ⏰ Weather forecasting is only accurate for the current year and month. 
-                      <br />
-                      Sorry, we can't predict next year's weather... yet! 😅
-                    </p>
-                  </div>
 
                   {/* Day */}
                   <div className="w-full">
