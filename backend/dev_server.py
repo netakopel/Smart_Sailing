@@ -362,15 +362,19 @@ def calculate_routes():
         
         # Add weather grid metadata if available (for visualization)
         if weather_grid_metadata and weather_grid_metadata.get('grid_points'):
-            # Convert grid_points from tuples to coordinate objects
+            # Include hourly weather data if available
             response_body["weatherGrid"] = {
                 "gridPoints": [
                     {"lat": lat, "lng": lng}
                     for lat, lng in weather_grid_metadata.get('grid_points', [])
                 ],
-                "bounds": weather_grid_metadata.get('bounds', {})
+                "bounds": weather_grid_metadata.get('bounds', {}),
+                "times": weather_grid_metadata.get('times', []),
+                "gridPointsWithWeather": weather_grid_metadata.get('gridPointsWithWeather', [])
             }
             logger.info(f"   Including weather grid: {len(response_body['weatherGrid']['gridPoints'])} points")
+            if weather_grid_metadata.get('times'):
+                logger.info(f"   Weather data for {len(weather_grid_metadata.get('times', []))} time steps")
         
         logger.info(f"[OK] Done! Returning {len(scored_routes)} scored routes")
         

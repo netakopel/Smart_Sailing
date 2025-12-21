@@ -50,6 +50,24 @@ export type RouteRequest = {
   departure_time?: string;
 };
 
+export type GridPointWeather = {
+  time: string;
+  windSpeed: number;
+  windDirection: number;
+  windSustained: number;
+  windGusts: number;
+  waveHeight: number;
+  precipitation: number;
+  visibility: number;
+  temperature: number;
+};
+
+export type GridPointWithWeather = {
+  lat: number;
+  lng: number;
+  hourlyWeather: GridPointWeather[];
+};
+
 export type WeatherGrid = {
   gridPoints: Coordinates[];
   bounds?: {
@@ -58,6 +76,8 @@ export type WeatherGrid = {
     min_lng?: number;
     max_lng?: number;
   };
+  times?: string[];  // ISO timestamp strings for each hour
+  gridPointsWithWeather?: GridPointWithWeather[];  // Grid points with hourly weather data
 };
 
 export type RouteResponse = {

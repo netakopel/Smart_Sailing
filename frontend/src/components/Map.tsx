@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Circle, CircleMarker, useMapEvents, Popup, useMap } from 'react-leaflet';
-import { Icon, type LatLngExpression } from 'leaflet';
+import { Icon, DivIcon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Coordinates, Route, WeatherGrid } from '../types';
 import { getUserLocation } from '../services/geolocation';
@@ -102,6 +102,99 @@ function MapCenterUpdater({ center, shouldUpdate }: { center: LatLngExpression; 
   return null;
 }
 
+// Helper function to get color based on wind speed
+// Green (low wind) -> Yellow -> Orange -> Red (high wind)
+function getWindColor(windSpeed: number): string {
+  // Wind speed ranges (in knots):
+  // 0-10: Green (calm to light breeze)
+  // 10-20: Yellow-green (moderate breeze)
+  // 20-30: Orange (strong breeze)
+  // 30+: Red (gale)
+  
+  if (windSpeed < 10) {
+    // Green to yellow-green
+    const ratio = windSpeed / 10;
+    const r = Math.round(34 + (154 - 34) * ratio);
+    const g = Math.round(197 + (205 - 197) * ratio);
+    const b = Math.round(94 + (50 - 94) * ratio);
+    return `rgba(${r}, ${g}, ${b}, 0.5)`;
+  } else if (windSpeed < 20) {
+    // Yellow-green to orange
+    const ratio = (windSpeed - 10) / 10;
+    const r = Math.round(154 + (249 - 154) * ratio);
+    const g = Math.round(205 + (115 - 205) * ratio);
+    const b = Math.round(50 + (22 - 50) * ratio);
+    return `rgba(${r}, ${g}, ${b}, 0.5)`;
+  } else if (windSpeed < 30) {
+    // Orange to red
+    const ratio = (windSpeed - 20) / 10;
+    const r = Math.round(249 + (239 - 249) * ratio);
+    const g = Math.round(115 + (68 - 115) * ratio);
+    const b = Math.round(22 + (68 - 22) * ratio);
+    return `rgba(${r}, ${g}, ${b}, 0.5)`;
+  } else {
+    // Red (high wind)
+    return 'rgba(239, 68, 68, 0.5)';
+  }
+}
+
+// Component to render wind arrow as a custom marker
+function WindArrowMarker({ 
+  position, 
+  windDirection, 
+  windSpeed 
+}: { 
+  position: LatLngExpression; 
+  windDirection: number; 
+  windSpeed: number;
+}) {
+  // Smaller fixed arrow length
+  const arrowLength = 14;
+  const arrowWidth = 2;
+  
+  // Get color based on wind speed (with transparency)
+  const arrowColor = getWindColor(windSpeed);
+  
+  // Create SVG arrow pointing in wind direction
+  // Wind direction is where wind comes FROM, so arrow points in that direction
+  const arrowSvg = `
+    <svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(14,14) rotate(${windDirection})">
+        <line 
+          x1="0" y1="0" 
+          x2="0" y2="${arrowLength}" 
+          stroke="${arrowColor}" 
+          stroke-width="${arrowWidth}" 
+          stroke-linecap="round"
+        />
+        <polygon 
+          points="0,${arrowLength} -3,${arrowLength - 6} 3,${arrowLength - 6}" 
+          fill="${arrowColor}"
+        />
+      </g>
+    </svg>
+  `;
+
+  const arrowIcon = new DivIcon({
+    className: 'wind-arrow-icon',
+    html: arrowSvg,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+
+  return (
+    <Marker position={position} icon={arrowIcon}>
+      <Popup>
+        <div className="bg-slate-900 text-white rounded p-2">
+          <p className="text-sm font-semibold">💨 Wind</p>
+          <p className="text-xs">Direction: {windDirection.toFixed(0)}°</p>
+          <p className="text-xs">Speed: {windSpeed.toFixed(1)} kt</p>
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
 export default function Map({
   startPoint,
   endPoint,
@@ -116,9 +209,17 @@ export default function Map({
   // State for showing/hiding weather grid
   const [showGrid, setShowGrid] = useState(true);
   
+  // State for selected hour index
+  const [selectedHourIndex, setSelectedHourIndex] = useState(0);
+  
   // State for user's detected location
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
   const [hasInitialLocation, setHasInitialLocation] = useState(false);
+  
+  // Animation state
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [animationWaypointIndex, setAnimationWaypointIndex] = useState(0);
+  const animationIntervalRef = useRef<number | null>(null);
   
   // Default center: English Channel (good sailing area) - fallback
   const defaultCenter: LatLngExpression = [50.0, -2.0];
@@ -148,19 +249,283 @@ export default function Map({
     return route.waypoints.map(wp => [wp.position.lat, wp.position.lng] as LatLngExpression);
   };
 
+  // Get available hours from weather grid
+  const allHours = weatherGrid?.times || [];
+  const gridPointsWithWeather = weatherGrid?.gridPointsWithWeather || [];
+
+  // Filter hours to only show those within route waypoints timeframe
+  const availableHours = (() => {
+    if (allHours.length === 0) return [];
+    
+    // If we have a selected route, filter to its timeframe
+    if (selectedRouteIndex !== null && routes[selectedRouteIndex]) {
+      const route = routes[selectedRouteIndex];
+      if (route.waypoints.length > 0) {
+        const firstWaypoint = route.waypoints[0];
+        const lastWaypoint = route.waypoints[route.waypoints.length - 1];
+        
+        try {
+          const startTime = new Date(firstWaypoint.estimatedArrival);
+          const endTime = new Date(lastWaypoint.estimatedArrival);
+          
+          // Filter hours that fall within the route timeframe
+          return allHours.filter(timeStr => {
+            const time = new Date(timeStr);
+            return time >= startTime && time <= endTime;
+          });
+        } catch {
+          // If parsing fails, return all hours
+          return allHours;
+        }
+      }
+    }
+    
+    // If no route selected, show all hours
+    return allHours;
+  })();
+
+  // Helper function to find closest hour for a waypoint
+  const findClosestHourIndex = (waypointTime: Date): number => {
+    if (availableHours.length === 0) return 0;
+    
+    let closestIndex = 0;
+    let minDiff = Math.abs(new Date(availableHours[0]).getTime() - waypointTime.getTime());
+    
+    for (let i = 1; i < availableHours.length; i++) {
+      const hourTime = new Date(availableHours[i]);
+      const diff = Math.abs(hourTime.getTime() - waypointTime.getTime());
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIndex = i;
+      }
+    }
+    
+    return closestIndex;
+  };
+
+  // Update selected hour when waypoint is highlighted
+  useEffect(() => {
+    if (highlightedWaypoint !== null && highlightedWaypoint !== undefined && 
+        selectedRouteIndex !== null && routes[selectedRouteIndex]) {
+      const route = routes[selectedRouteIndex];
+      const waypoint = route.waypoints[highlightedWaypoint];
+      
+      if (waypoint && availableHours.length > 0) {
+        try {
+          const waypointTime = new Date(waypoint.estimatedArrival);
+          const closestIndex = findClosestHourIndex(waypointTime);
+          setSelectedHourIndex(closestIndex);
+          // Removed automatic grid showing - user controls it with toggle
+        } catch (error) {
+          console.error('Error finding closest hour for waypoint:', error);
+        }
+      }
+    }
+  }, [highlightedWaypoint, selectedRouteIndex, routes, availableHours]);
+
+  // Animation effect - update waypoint and wind grid
+  useEffect(() => {
+    if (isAnimating && selectedRouteIndex !== null && routes[selectedRouteIndex]) {
+      const route = routes[selectedRouteIndex];
+      
+      // Clear any existing interval
+      if (animationIntervalRef.current) {
+        clearInterval(animationIntervalRef.current);
+      }
+      
+      // Start animation
+      animationIntervalRef.current = window.setInterval(() => {
+        setAnimationWaypointIndex((prevIndex) => {
+          const nextIndex = prevIndex + 1;
+          
+          // If we've reached the end, stop animation
+          if (nextIndex >= route.waypoints.length) {
+            setIsAnimating(false);
+            return prevIndex;
+          }
+          
+          // Update wind grid to match this waypoint's time
+          const waypoint = route.waypoints[nextIndex];
+          if (waypoint && availableHours.length > 0) {
+            try {
+              const waypointTime = new Date(waypoint.estimatedArrival);
+              const closestIndex = findClosestHourIndex(waypointTime);
+              setSelectedHourIndex(closestIndex);
+            } catch (error) {
+              console.error('Error updating wind grid during animation:', error);
+            }
+          }
+          
+          return nextIndex;
+        });
+      }, 1000); // 1 second per waypoint
+      
+      return () => {
+        if (animationIntervalRef.current) {
+          clearInterval(animationIntervalRef.current);
+        }
+      };
+    } else {
+      // Stop animation
+      if (animationIntervalRef.current) {
+        clearInterval(animationIntervalRef.current);
+        animationIntervalRef.current = null;
+      }
+    }
+  }, [isAnimating, selectedRouteIndex, routes, availableHours]);
+
+  // Handle animation controls
+  const handleToggleAnimation = () => {
+    if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
+    
+    if (isAnimating) {
+      // Stop animation and reset
+      setIsAnimating(false);
+      setAnimationWaypointIndex(0);
+    } else {
+      // Start animation
+      setShowGrid(true);
+      setAnimationWaypointIndex(0);
+      setIsAnimating(true);
+    }
+  };
+
+  // Format time for display (same format as waypoint cards: YYYY-MM-DD HH:MM)
+  const formatTime = (timeString: string): string => {
+    try {
+      const date = new Date(timeString);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${minutes}`;
+    } catch {
+      return timeString;
+    }
+  };
+
   return (
     <div className="h-full w-full rounded-xl overflow-hidden shadow-2xl border border-slate-700 relative">
-      {/* Toggle button for weather grid */}
+      {/* Weather grid controls */}
       {weatherGrid && weatherGrid.gridPoints && weatherGrid.gridPoints.length > 0 && (
-        <button
-          onClick={() => setShowGrid(!showGrid)}
-          className="absolute top-2 right-2 z-[1000] bg-slate-800/90 hover:bg-slate-700 text-white px-3 py-2 rounded-lg shadow-lg border border-slate-600 text-sm flex items-center gap-2 transition-colors"
-          title={showGrid ? 'Hide weather grid points' : 'Show weather grid points'}
-        >
-          <span>🌐</span>
-          <span>{showGrid ? 'Hide Grid' : 'Show Grid'}</span>
-          <span className="text-xs text-slate-400">({weatherGrid.gridPoints.length})</span>
-        </button>
+        <div className="absolute top-2 right-2 z-[1000] flex flex-col gap-2">
+          {/* Apple-style toggle for grid visibility */}
+          <div className="bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🌐</span>
+                <div className="text-white text-sm font-medium">Wind Grid</div>
+              </div>
+              {/* Apple-style toggle switch */}
+              <button
+                onClick={() => setShowGrid(!showGrid)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 ${
+                  showGrid ? 'bg-blue-500' : 'bg-slate-600'
+                }`}
+                role="switch"
+                aria-checked={showGrid}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out ${
+                    showGrid ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Animation controls - only show when grid is open */}
+          {showGrid && selectedRouteIndex !== null && routes[selectedRouteIndex] && routes[selectedRouteIndex].waypoints.length > 0 && (
+            <div className="bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎬</span>
+                  <div className="text-white text-sm font-medium">Route Animation</div>
+                </div>
+                <button
+                  onClick={handleToggleAnimation}
+                  className={`px-3 py-1.5 text-white rounded text-sm font-medium transition-all shadow-lg hover:shadow-xl ${
+                    isAnimating 
+                      ? 'bg-gradient-to-r from-red-300 via-rose-400 to-pink-400 hover:from-red-400 hover:via-rose-500 hover:to-pink-500' 
+                      : 'bg-gradient-to-r from-green-300 via-emerald-400 to-teal-400 hover:from-green-400 hover:via-emerald-500 hover:to-teal-500'
+                  }`}
+                  title={isAnimating ? "Stop animation" : "Play animation"}
+                >
+                  {isAnimating ? 'Stop' : 'Play'}
+                </button>
+              </div>
+              
+              {isAnimating && (
+                <div className="mt-2 text-xs text-slate-300">
+                  Waypoint {animationWaypointIndex + 1} / {routes[selectedRouteIndex].waypoints.length}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Time selector - only show when grid is visible */}
+          {showGrid && availableHours.length > 0 && (
+            <div className="bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-2">
+              <label className="text-white text-xs mb-1 block">Hour:</label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedHourIndex(Math.max(0, selectedHourIndex - 1))}
+                  disabled={selectedHourIndex === 0}
+                  className="px-2 py-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-sm"
+                >
+                  ‹
+                </button>
+                <select
+                  value={selectedHourIndex}
+                  onChange={(e) => setSelectedHourIndex(Number(e.target.value))}
+                  className="bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600 min-w-[180px]"
+                >
+                  {availableHours.map((time, idx) => (
+                    <option key={idx} value={idx}>
+                      {formatTime(time)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setSelectedHourIndex(Math.min(availableHours.length - 1, selectedHourIndex + 1))}
+                  disabled={selectedHourIndex === availableHours.length - 1}
+                  className="px-2 py-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-sm"
+                >
+                  ›
+                </button>
+              </div>
+              <div className="text-xs text-slate-400 mt-1">
+                {selectedHourIndex + 1} / {availableHours.length}
+              </div>
+            </div>
+          )}
+          
+          {/* Wind speed legend - only show when grid is visible */}
+          {showGrid && (
+            <div className="bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-2">
+              <label className="text-white text-xs mb-1 block font-semibold">Wind Speed:</label>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(34, 197, 94)' }}></div>
+                  <span className="text-xs text-white">0-10 kt</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(154, 205, 50)' }}></div>
+                  <span className="text-xs text-white">10-20 kt</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(249, 115, 22)' }}></div>
+                  <span className="text-xs text-white">20-30 kt</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(239, 68, 68)' }}></div>
+                  <span className="text-xs text-white">30+ kt</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
       <MapContainer
         center={mapCenter}
@@ -228,10 +593,16 @@ export default function Map({
           // Second pass: render selected route last (on top)
           if (selectedRouteIndex !== null && routes[selectedRouteIndex]) {
             const route = routes[selectedRouteIndex];
+            
+            // During animation, only show route up to current waypoint
+            const routePositions = isAnimating 
+              ? getRoutePositions(route).slice(0, animationWaypointIndex + 1)
+              : getRoutePositions(route);
+            
             polylines.push(
               <Polyline
                 key={`route-sel-${selectedRouteIndex}`}
-                positions={getRoutePositions(route)}
+                positions={routePositions}
                 color={getRouteColor(selectedRouteIndex)}
                 weight={6}
                 opacity={1.0}
@@ -274,8 +645,13 @@ export default function Map({
             
             // Fourth pass: render waypoint markers
             route.waypoints.forEach((waypoint, wpIndex) => {
+              // During animation, only show waypoints up to current animation index
+              if (isAnimating && wpIndex > animationWaypointIndex) {
+                return;
+              }
+              
               const position: LatLngExpression = [waypoint.position.lat, waypoint.position.lng];
-              const isHighlighted = highlightedWaypoint === wpIndex;
+              const isHighlighted = highlightedWaypoint === wpIndex || (isAnimating && wpIndex === animationWaypointIndex);
               const isStart = wpIndex === 0;
               const isEnd = wpIndex === route.waypoints.length - 1;
               
@@ -283,7 +659,7 @@ export default function Map({
                 <CircleMarker
                   key={`waypoint-${selectedRouteIndex}-${wpIndex}`}
                   center={position}
-                  radius={isHighlighted ? 6 : 4}
+                  radius={isHighlighted ? 8 : 4}
                   pathOptions={{
                     color: isStart ? '#22c55e' : isEnd ? '#ef4444' : '#3b82f6',
                     fillColor: isStart ? '#22c55e' : isEnd ? '#ef4444' : '#3b82f6',
@@ -323,20 +699,25 @@ export default function Map({
           return polylines;
         })()}
 
-        {/* Weather grid points - show as small circle markers */}
-        {showGrid && weatherGrid && weatherGrid.gridPoints && weatherGrid.gridPoints.map((point, index) => (
-          <CircleMarker
-            key={`grid-${index}`}
-            center={[point.lat, point.lng]}
-            radius={2}
-            pathOptions={{
-              color: '#60a5fa',
-              fillColor: '#60a5fa',
-              fillOpacity: 0.4,
-              weight: 1,
-            }}
-          />
-        ))}
+        {/* Weather grid points with wind arrows - show per hour */}
+        {showGrid && gridPointsWithWeather.length > 0 && availableHours.length > 0 && gridPointsWithWeather.map((point, index) => {
+          // Map selected hour index to the actual time string
+          const selectedTime = availableHours[selectedHourIndex];
+          if (!selectedTime) return null;
+          
+          // Find the weather data for this time
+          const hourlyWeather = point.hourlyWeather.find(w => w.time === selectedTime);
+          if (!hourlyWeather) return null;
+
+          return (
+            <WindArrowMarker
+              key={`wind-arrow-${index}-${selectedHourIndex}`}
+              position={[point.lat, point.lng]}
+              windDirection={hourlyWeather.windDirection}
+              windSpeed={hourlyWeather.windSpeed}
+            />
+          );
+        })}
       </MapContainer>
     </div>
   );

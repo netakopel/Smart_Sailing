@@ -991,9 +991,42 @@ def generate_isochrone_routes(request: RouteRequest) -> tuple[List[GeneratedRout
     logger.info("="*60)
     
     # Extract metadata for frontend visualization
+    # Include hourly weather data for each grid point
+    weather_data = weather_grid.get('weather_data', {})
+    times = weather_grid.get('times', [])
+    
+    # Organize weather data by grid point and time for easier frontend access
+    grid_points_with_weather = []
+    for lat, lng in weather_grid.get('grid_points', []):
+        hourly_weather = []
+        for time_idx, time_dt in enumerate(times):
+            weather_key = (lat, lng, time_idx)
+            if weather_key in weather_data:
+                weather = weather_data[weather_key]
+                hourly_weather.append({
+                    'time': time_dt.isoformat() if hasattr(time_dt, 'isoformat') else str(time_dt),
+                    'windSpeed': weather.wind_speed,
+                    'windDirection': weather.wind_direction,
+                    'windSustained': weather.wind_sustained,
+                    'windGusts': weather.wind_gusts,
+                    'waveHeight': weather.wave_height,
+                    'precipitation': weather.precipitation,
+                    'visibility': weather.visibility,
+                    'temperature': weather.temperature
+                })
+        
+        if hourly_weather:  # Only include points with weather data
+            grid_points_with_weather.append({
+                'lat': lat,
+                'lng': lng,
+                'hourlyWeather': hourly_weather
+            })
+    
     weather_grid_metadata = {
         'grid_points': weather_grid.get('grid_points', []),
-        'bounds': weather_grid.get('bounds', {})
+        'bounds': weather_grid.get('bounds', {}),
+        'times': [t.isoformat() if hasattr(t, 'isoformat') else str(t) for t in times],
+        'gridPointsWithWeather': grid_points_with_weather
     }
     
     return routes, weather_grid_metadata
