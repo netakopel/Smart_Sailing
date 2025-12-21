@@ -40,10 +40,15 @@ jobs:
       working-directory: frontend
       run: npm run build
     
-    - name: Build summary
-      if: always()
+    - name: Verify build output
+      working-directory: frontend
       run: |
-        echo "✅ Frontend build completed!"
-        echo "TypeScript compilation and Vite build successful"
-        ls -lh frontend/dist/
+        if [ -d "dist" ]; then
+          echo "✅ Frontend build completed successfully!"
+          echo "TypeScript compilation and Vite build successful"
+          ls -lh dist/
+        else
+          echo "❌ Build failed: dist directory not found"
+          exit 1
+        fi
 
